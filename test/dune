@@ -1,0 +1,22 @@
+; The queue against SPOOL_TEST_PG; a database of a case's own is
+; db_target.ml.
+
+(test
+ (name test_spool)
+ (modules test_spool db_target)
+ (deps
+  (glob_files ../migrations/*.sql))
+ (libraries
+  spool
+  rowtype
+  rowtype-postgres
+  wiretype
+  eio
+  eio.unix
+  eio_main
+  logs
+  ptime
+  ptime.clock.os
+  mtime
+  unix
+  alcotest))

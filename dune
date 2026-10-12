@@ -1,0 +1,18 @@
+; Every warning but 4 (fragile match, which fires on every `_ ->`) and the
+; module-style ones. Warning 9 makes a new record field a compile error
+; wherever a pattern should handle it.
+
+(env
+ (_
+  (flags
+   (:standard -w +a-4-40-41-42-44-45-48-67-70))))
+
+; spool's migrations, installed with it in share/spool/migrations, where
+; rowtype-migrate's --source spool finds them.
+
+(install
+ (section share)
+ (package spool)
+ (files
+  (glob_files
+   (migrations/*.sql with_prefix migrations))))

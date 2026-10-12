@@ -1,0 +1,6 @@
+; The queue, over rowtype's Postgres backend: it names no driver.
+
+(library
+ (name spool)
+ (public_name spool)
+ (libraries rowtype rowtype-postgres ptime wiretype eio logs mtime unix))
