@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## 0.2.0 (2026-10-13)
 
 - Breaking: spool builds on rowtype 0.6.0, postgres-eio 0.4.0 and
   wiretype 0.4.0. The `Rowtype_postgres.Conninfo.t` a runner is given is
