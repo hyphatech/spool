@@ -23,10 +23,10 @@
   "A job is a row written in the transaction that made it owed, claimed by a runner under a lease, run outside any transaction, retried with backoff and finished once, however often it was attempted.")
  (depends
   (ocaml (>= 5.5))
-  (rowtype (>= 0.4.0))
-  (rowtype-postgres (>= 0.4.0))
+  (rowtype (>= 0.6.0))
+  (rowtype-postgres (>= 0.6.0))
   (ptime (>= 1.2.0))
-  (wiretype (>= 0.3.0))
+  (wiretype (>= 0.4.0))
   (eio (>= 1.5))
   (logs (>= 0.10.0))
   (mtime (>= 2.1.0))
