@@ -34,20 +34,18 @@ let server () =
   | None -> Alcotest.fail "SPOOL_TEST_PG is not set"
   | Some server -> server
 
-let on_database name =
-  match Rowtype_postgres.on_database ~server:(server ()) name with
-  | Ok url -> url
-  | Error e -> Alcotest.failf "SPOOL_TEST_PG: %s" (Rowtype.error_to_string e)
-
 let conninfo url =
-  match Rowtype_postgres.conninfo url with
+  match Rowtype_postgres.Conninfo.of_string url with
   | Ok c -> c
-  | Error e -> Alcotest.failf "a URL: %s" (Rowtype.error_to_string e)
+  | Error e -> Alcotest.failf "a URL: %s" e
 
-let connect url =
+let on_database name =
+  Rowtype_postgres.Conninfo.with_database (conninfo (server ())) name
+
+let connect conninfo =
   match
     Rowtype_postgres.connect ~sw:(sw ()) ~net:(net ()) ~mono_clock:(mono ())
-      (conninfo url)
+      conninfo
   with
   | Ok db -> db
   | Error e -> Alcotest.failf "cannot connect: %s" (Rowtype.error_to_string e)
@@ -58,7 +56,7 @@ let exec db sql =
   | Error e -> Alcotest.failf "%s: %s" sql (Rowtype.error_to_string e)
 
 let admin f =
-  let db = connect (server ()) in
+  let db = connect (conninfo (server ())) in
   Fun.protect ~finally:(fun () -> Rowtype_postgres.close db) (fun () -> f db)
 
 (* A database of its own per case, so one case cannot see another's rows;

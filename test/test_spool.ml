@@ -65,13 +65,13 @@ let ok what = function
 (* A case's database with the table in it, a connection to it, and its URL
    for runners. *)
 let with_table f =
-  Db_target.with_postgres (fun url ->
-      let conn = Db_target.connect url in
+  Db_target.with_postgres (fun target ->
+      let conn = Db_target.connect target in
       Fun.protect
         ~finally:(fun () -> Pg.close conn)
         (fun () ->
           List.iter (Db_target.exec conn) migrations;
-          f url conn))
+          f target conn))
 
 (* A clock a case moves, starting at the real instant so a runner on a real
    clock agrees with it, to the millisecond, so an instant written to the
@@ -100,11 +100,11 @@ let find conn id =
   | None -> Alcotest.fail "no such job"
 
 let runner ?(queues = [ ("default", 4) ]) ?poll ?lease ?retain_completed ~now
-    url handlers =
+    target handlers =
   match
     J.Runner.create ~sw:(Db_target.sw ()) ~net:(Db_target.net ())
       ~mono_clock:(Db_target.mono ()) ~now ?poll ?lease ?retain_completed
-      ~queues handlers (Db_target.conninfo url)
+      ~queues handlers target
   with
   | Ok r -> r
   | Error e -> Alcotest.failf "create: %s" (J.Runner.refused_to_string e)
@@ -155,7 +155,7 @@ let done_ _ _ = Ok ()
 (* Enqueueing *)
 
 let test_a_rolled_back_enqueue_leaves_nothing () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let kind = text "note" in
       (match
@@ -169,7 +169,7 @@ let test_a_rolled_back_enqueue_leaves_nothing () =
       Alcotest.(check (list (triple string state int)))
         "no job" []
         (ok "counts" (J.counts conn));
-      let r = runner ~now url [ J.handle kind done_ ] in
+      let r = runner ~now target [ J.handle kind done_ ] in
       Alcotest.check outcomes "and nothing runs" [] (drain r);
       J.Runner.stop r)
 
@@ -214,7 +214,7 @@ let test_a_payload_is_an_object () =
     | exception Invalid_argument _ -> true
   in
   let key payload =
-    Wiretype.kind ~name:"key" ~parse:Result.ok ~print:Fun.id payload
+    Wiretype.kind ~kind:"key" ~parse:Result.ok ~print:Fun.id payload
   in
   check_bool "a bare string is refused" true (refused Wiretype.string);
   check_bool "and a kind over one" true (refused (key Wiretype.string));
@@ -234,13 +234,13 @@ let test_every_statement_is_what_the_database_says () =
 (* One attempt, through drain *)
 
 let test_done_is_completed () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let kind = text "note" in
       let seen = ref [] in
       let id = enqueue conn ~now:(now ()) kind "hello" in
       let r =
-        runner ~now url
+        runner ~now target
           [
             J.handle kind (fun (job : J.job) arg ->
                 seen := (job.attempt, arg) :: !seen;
@@ -256,12 +256,12 @@ let test_done_is_completed () =
       J.Runner.stop r)
 
 let test_retry_waits_the_backoff_within_its_spread () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, at = clock () in
       let kind = text "flaky" in
       let id = enqueue conn ~now:(now ()) kind "x" in
       let r =
-        runner ~now url
+        runner ~now target
           [ J.handle kind (fun _ _ -> Error (J.Retry "upstream down")) ]
       in
       List.iter
@@ -291,12 +291,12 @@ let test_retry_waits_the_backoff_within_its_spread () =
       J.Runner.stop r)
 
 let test_retry_in_waits_what_it_names () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let kind = text "limited" in
       let id = enqueue conn ~now:(now ()) kind "x" in
       let r =
-        runner ~now url
+        runner ~now target
           [
             J.handle kind (fun _ _ ->
                 Error (J.Retry_in (Mtime.Span.(7 * s), "rate limited")));
@@ -309,12 +309,12 @@ let test_retry_in_waits_what_it_names () =
       J.Runner.stop r)
 
 let test_the_last_attempt_discards () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, at = clock () in
       let kind = text ~max_attempts:2 "doomed" in
       let id = enqueue conn ~now:(now ()) kind "x" in
       let r =
-        runner ~now url [ J.handle kind (fun _ _ -> Error (J.Retry "no")) ]
+        runner ~now target [ J.handle kind (fun _ _ -> Error (J.Retry "no")) ]
       in
       ignore (drain r);
       at := plus !at Mtime.Span.min;
@@ -325,12 +325,12 @@ let test_the_last_attempt_discards () =
       J.Runner.stop r)
 
 let test_discard_uses_no_attempt () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let kind = text "hopeless" in
       let id = enqueue conn ~now:(now ()) kind "x" in
       let r =
-        runner ~now url
+        runner ~now target
           [ J.handle kind (fun _ _ -> Error (J.Discard "no engine")) ]
       in
       Alcotest.check outcomes "discarded at once"
@@ -350,12 +350,12 @@ let test_discard_uses_no_attempt () =
 exception Upstream of string
 
 let test_a_raise_is_a_retry_named_by_its_constructor () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let kind = text "raises" in
       let id = enqueue conn ~now:(now ()) kind "x" in
       let r =
-        runner ~now url
+        runner ~now target
           [ J.handle kind (fun _ _ -> raise (Upstream "a secret")) ]
       in
       Alcotest.check outcomes "retried" [ (id, J.Available) ] (drain r);
@@ -376,12 +376,12 @@ let test_a_raise_is_a_retry_named_by_its_constructor () =
       | _ -> Alcotest.fail "one reason")
 
 let test_a_timeout_is_a_failure () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let kind = text ~timeout:Mtime.Span.(200 * ms) "slow" in
       let id = enqueue conn ~now:(now ()) kind "x" in
       let r =
-        runner ~now url
+        runner ~now target
           [
             J.handle kind (fun _ _ ->
                 sleep Mtime.Span.(5 * s);
@@ -396,17 +396,17 @@ let test_a_timeout_is_a_failure () =
       J.Runner.stop r)
 
 let test_a_payload_that_no_longer_decodes_is_discarded () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let old = text "shape" in
       let id = enqueue conn ~now:(now ()) old "a string" in
       let changed = J.Kind.make "shape" (one "note" Wiretype.int) in
-      let r = runner ~now url [ J.handle changed done_ ] in
+      let r = runner ~now target [ J.handle changed done_ ] in
       Alcotest.check outcomes "discarded" [ (id, J.Discarded) ] (drain r);
       J.Runner.stop r)
 
 let test_an_expired_job_is_discarded_unrun () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, at = clock () in
       let kind = text "brief" in
       let ran = ref false in
@@ -417,7 +417,7 @@ let test_an_expired_job_is_discarded_unrun () =
       in
       at := plus !at Mtime.Span.(2 * s);
       let r =
-        runner ~now url
+        runner ~now target
           [
             J.handle kind (fun _ _ ->
                 ran := true;
@@ -432,27 +432,27 @@ let test_an_expired_job_is_discarded_unrun () =
       J.Runner.stop r)
 
 let test_a_kind_not_kept_is_deleted_on_completion () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let kind = text ~keep:false "secret" in
       let id = enqueue conn ~now:(now ()) kind "x" in
-      let r = runner ~now url [ J.handle kind done_ ] in
+      let r = runner ~now target [ J.handle kind done_ ] in
       Alcotest.check outcomes "completed" [ (id, J.Completed) ] (drain r);
       check_bool "and gone" true (Option.is_none (ok "find" (J.find conn id)));
       J.Runner.stop r)
 
 let test_a_kind_nobody_handles_is_left_alone () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let mine = text "mine" and theirs = text "theirs" in
       let id = enqueue conn ~now:(now ()) theirs "x" in
-      let r = runner ~now url [ J.handle mine done_ ] in
+      let r = runner ~now target [ J.handle mine done_ ] in
       Alcotest.check outcomes "nothing ran" [] (drain r);
       Alcotest.check state "still waiting" J.Available (find conn id).state;
       J.Runner.stop r)
 
 let test_order_is_priority_then_instant_then_enqueueing () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let kind = text "ordered" in
       let seen = ref [] in
@@ -469,7 +469,7 @@ let test_order_is_priority_then_instant_then_enqueueing () =
       e "first enqueued";
       e "second enqueued";
       let r =
-        runner ~now url
+        runner ~now target
           [
             J.handle kind (fun _ arg ->
                 seen := arg :: !seen;
@@ -487,7 +487,7 @@ let test_order_is_priority_then_instant_then_enqueueing () =
 (* An operator's hand *)
 
 let test_cancel_and_retry () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, _ = clock () in
       let kind = text "manual" in
       let waiting = enqueue conn ~now:(now ()) kind "w" in
@@ -495,7 +495,7 @@ let test_cancel_and_retry () =
         (ok "cancel" (J.cancel conn ~now:(now ()) waiting));
       let fails = enqueue conn ~now:(now ()) ~unique:"k" kind "f" in
       let r =
-        runner ~now url
+        runner ~now target
           [
             J.handle kind (fun _ arg ->
                 if String.equal arg "f" then Error (J.Discard "broken")
@@ -535,7 +535,7 @@ let test_cancel_and_retry () =
 (* Runners *)
 
 let test_two_runners_complete_every_job_once () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let n = 1000 in
       let kind = J.Kind.make "count" (one "count" Wiretype.int) in
       let seen = Hashtbl.create n in
@@ -548,13 +548,13 @@ let test_two_runners_complete_every_job_once () =
         runner ~now:real_now
           ~poll:Mtime.Span.(100 * ms)
           ~queues:[ ("default", 8) ]
-          url
+          target
           [ J.handle kind handler ]
       and b =
         runner ~now:real_now
           ~poll:Mtime.Span.(100 * ms)
           ~queues:[ ("default", 8) ]
-          url
+          target
           [ J.handle kind handler ]
       in
       J.Runner.start a;
@@ -591,7 +591,7 @@ let test_two_runners_complete_every_job_once () =
         (Hashtbl.fold (fun _ c ok -> ok && c = 1) seen true))
 
 let test_a_runner_killed_has_its_job_run_again () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, at = clock () in
       let kind = text "long" in
       let id = enqueue conn ~now:(now ()) kind "x" in
@@ -610,7 +610,7 @@ let test_a_runner_killed_has_its_job_run_again () =
                          Eio.Promise.resolve began ();
                          Eio.Fiber.await_cancel ());
                    ]
-                   (Db_target.conninfo url)
+                   target
                with
                | Ok r -> r
                | Error e -> Alcotest.fail (J.Runner.refused_to_string e)
@@ -622,7 +622,7 @@ let test_a_runner_killed_has_its_job_run_again () =
        with Exit -> ());
       Alcotest.check state "left running" J.Running (find conn id).state;
       at := plus !at Mtime.Span.(3 * s);
-      let b = runner ~now url [ J.handle kind done_ ] in
+      let b = runner ~now target [ J.handle kind done_ ] in
       Alcotest.check outcomes "run again by another"
         [ (id, J.Completed) ]
         (drain b);
@@ -634,7 +634,7 @@ let test_a_runner_killed_has_its_job_run_again () =
       J.Runner.stop b)
 
 let test_a_lease_taken_changes_nothing_and_stops_the_job () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let kind = text "held" in
       let id = enqueue conn ~now:(real_now ()) kind "x" in
       let started, began = Eio.Promise.create () in
@@ -644,7 +644,7 @@ let test_a_lease_taken_changes_nothing_and_stops_the_job () =
         runner ~now:real_now
           ~poll:Mtime.Span.(100 * ms)
           ~lease:Mtime.Span.(800 * ms)
-          url
+          target
           [
             J.handle kind (fun _ _ ->
                 Eio.Promise.resolve began ();
@@ -672,7 +672,7 @@ let test_a_lease_taken_changes_nothing_and_stops_the_job () =
       J.Runner.stop r)
 
 let test_a_runner_cut_off_stops_its_job_before_the_lease_ends () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let kind = text "held" in
       let id = enqueue conn ~now:(real_now ()) kind "x" in
       let started, began = Eio.Promise.create () in
@@ -681,7 +681,7 @@ let test_a_runner_cut_off_stops_its_job_before_the_lease_ends () =
       let r =
         runner ~now:real_now
           ~poll:Mtime.Span.(100 * ms)
-          ~lease url
+          ~lease target
           [
             J.handle kind (fun _ _ ->
                 let t0 = mono_now () in
@@ -696,7 +696,7 @@ let test_a_runner_cut_off_stops_its_job_before_the_lease_ends () =
       Eio.Promise.await started;
       (* The row locked, so every renewal hangs as an unreachable database
          would. *)
-      let blocker = Db_target.connect url in
+      let blocker = Db_target.connect target in
       Db_target.exec blocker "begin";
       Db_target.exec blocker
         (Printf.sprintf "select id from spool_jobs where id = %s for update"
@@ -717,13 +717,13 @@ let test_a_runner_cut_off_stops_its_job_before_the_lease_ends () =
       J.Runner.stop r)
 
 let test_a_notification_wakes_a_sleeping_queue () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let kind = text "prompt" in
       let ran = ref false in
       let r =
         runner ~now:real_now
           ~poll:Mtime.Span.(10 * s)
-          url
+          target
           [
             J.handle kind (fun _ _ ->
                 ran := true;
@@ -742,13 +742,13 @@ let test_a_notification_wakes_a_sleeping_queue () =
 (* The listener's driver sends a heartbeat after ten seconds of silence; a
    runner idle past it must still be standing, and still hear. *)
 let test_a_runner_idle_past_the_heartbeat_still_runs_jobs () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let kind = text "later" in
       let ran = ref false in
       let r =
         runner ~now:real_now
           ~poll:Mtime.Span.(30 * s)
-          url
+          target
           [
             J.handle kind (fun _ _ ->
                 ran := true;
@@ -765,13 +765,13 @@ let test_a_runner_idle_past_the_heartbeat_still_runs_jobs () =
       J.Runner.stop r)
 
 let test_jobs_run_without_the_listener () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let kind = text "polled" in
       let ran = ref false in
       let r =
         runner ~now:real_now
           ~poll:Mtime.Span.(300 * ms)
-          url
+          target
           [
             J.handle kind (fun _ _ ->
                 ran := true;
@@ -788,14 +788,14 @@ let test_jobs_run_without_the_listener () =
       J.Runner.stop r)
 
 let test_stop_puts_an_interrupted_job_back () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let kind = text "endless" in
       let id = enqueue conn ~now:(real_now ()) kind "x" in
       let started, began = Eio.Promise.create () in
       let r =
         runner ~now:real_now
           ~poll:Mtime.Span.(100 * ms)
-          url
+          target
           [
             J.handle kind (fun _ _ ->
                 Eio.Promise.resolve began ();
@@ -816,7 +816,7 @@ let test_stop_puts_an_interrupted_job_back () =
       check_int "and no failure recorded" 0 (List.length info.errors))
 
 let test_finished_rows_are_pruned_by_retention () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let now, at = clock () in
       let kind = text "old" in
       let good = enqueue conn ~now:(now ()) kind "good" in
@@ -824,11 +824,11 @@ let test_finished_rows_are_pruned_by_retention () =
       let handler _ arg =
         if String.equal arg "bad" then Error (J.Discard "no") else Ok ()
       in
-      let r = runner ~now url [ J.handle kind handler ] in
+      let r = runner ~now target [ J.handle kind handler ] in
       ignore (drain r);
       J.Runner.stop r;
       at := plus !at Mtime.Span.(2 * day);
-      let pruner = runner ~now url [ J.handle kind handler ] in
+      let pruner = runner ~now target [ J.handle kind handler ] in
       J.Runner.start pruner;
       eventually "the completed one pruned" (fun () ->
           Option.is_none (ok "find" (J.find conn good)));
@@ -839,12 +839,12 @@ let test_finished_rows_are_pruned_by_retention () =
 (* A database whose table spool's migrations have not made is found at
    start, with what to run, rather than by the first job. *)
 let test_create_refuses_an_unmigrated_database () =
-  Db_target.with_postgres (fun url ->
+  Db_target.with_postgres (fun target ->
       match
         J.Runner.create ~sw:(Db_target.sw ()) ~net:(Db_target.net ())
           ~mono_clock:(Db_target.mono ()) ~now:real_now
           ~queues:[ ("default", 1) ]
-          [] (Db_target.conninfo url)
+          [] target
       with
       | Error (J.Runner.Unmigrated _ as r) ->
           let said = J.Runner.refused_to_string r in
@@ -856,13 +856,13 @@ let test_create_refuses_an_unmigrated_database () =
       | Ok _ -> Alcotest.fail "a runner started without its table")
 
 let test_create_refuses_what_it_cannot_honour () =
-  with_table (fun url _ ->
+  with_table (fun target _ ->
       let a = text "a" and b = text ~queue:"elsewhere" "b" in
       let refused queues handlers =
         match
           J.Runner.create ~sw:(Db_target.sw ()) ~net:(Db_target.net ())
             ~mono_clock:(Db_target.mono ()) ~now:real_now ~queues handlers
-            (Db_target.conninfo url)
+            target
         with
         | Ok r ->
             J.Runner.stop r;
@@ -889,7 +889,7 @@ let test_create_refuses_what_it_cannot_honour () =
    transcript, which is the records themselves and so the application's to
    cap, as the driver's suite leaves it. *)
 let test_no_payload_reaches_a_log () =
-  with_table (fun url conn ->
+  with_table (fun target conn ->
       let lines = ref [] in
       let previous = Logs.reporter () and level = Logs.level () in
       let transcript src =
@@ -919,7 +919,7 @@ let test_no_payload_reaches_a_log () =
           ignore (enqueue conn ~now:(now ()) kind secret);
           let calls = ref 0 in
           let r =
-            runner ~now url
+            runner ~now target
               [
                 J.handle kind (fun _ _ ->
                     incr calls;

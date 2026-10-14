@@ -91,14 +91,14 @@ let state_to_string = function
   | Cancelled -> "cancelled"
 
 let state_of_string = function
-  | "available" -> Some Available
-  | "running" -> Some Running
-  | "completed" -> Some Completed
-  | "discarded" -> Some Discarded
-  | "cancelled" -> Some Cancelled
-  | _ -> None
+  | "available" -> Ok Available
+  | "running" -> Ok Running
+  | "completed" -> Ok Completed
+  | "discarded" -> Ok Discarded
+  | "cancelled" -> Ok Cancelled
+  | other -> Error (Printf.sprintf "%S is no job's state" other)
 
-let state_ty = S.parse S.text ~of_:state_of_string ~to_:state_to_string
+let state_ty = S.parse S.text ~parse:state_of_string ~print:state_to_string
 
 type failed = { attempt : int; at : Ptime.t; reason : string }
 
@@ -107,7 +107,7 @@ type failed = { attempt : int; at : Ptime.t; reason : string }
    append one write it so, and this is the one reading of it. *)
 let at_json =
   let ms_ps = 1_000_000_000L and day_ms = 86_400_000 in
-  Wiretype.kind ~name:"epoch milliseconds"
+  Wiretype.kind ~kind:"epoch milliseconds"
     ~parse:(fun ms ->
       let d = (ms / day_ms) - if ms mod day_ms < 0 then 1 else 0 in
       let into = Int64.mul (Int64.of_int (ms - (d * day_ms))) ms_ps in
@@ -626,7 +626,7 @@ module Runner = struct
         | Ok (Ok ()) -> Ok pool
         | Ok (Error (`Disagreements problems)) -> refused (Unmigrated problems)
         | Ok (Error (#S.error as e)) -> refused (Unreachable e)
-        | Error e -> refused (Unreachable (`Db (Pg.Pool.error_to_string e))))
+        | Error e -> refused (Unreachable (`Db (Pg.error_to_string e))))
 
   (* Why a running job's fiber was stopped, which decides what is written
      for it: a lease lost writes nothing, since the row is no longer this
@@ -678,12 +678,7 @@ module Runner = struct
 
   let mono t = Eio.Time.Mono.now t.clock
   let since t at = Mtime.span at (mono t)
-
-  let words = function
-    | `Pool `Busy -> "no connection came free within the pool's wait"
-    | `Pool `Closed -> "the pool is closed"
-    | `Not_committed m -> "not committed: " ^ m
-    | #S.error as e -> S.error_to_string e
+  let words = Pg.error_to_string
 
   (* One short transaction on the runner's own pool. *)
   let use t f =

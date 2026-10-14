@@ -1,5 +1,13 @@
 # Changes
 
+## Unreleased
+
+- Breaking: spool builds on rowtype 0.8.0, postgres-eio 0.5.0 and
+  wiretype 0.5.0. A runner's failures are told by
+  `Rowtype_postgres.error_to_string`, as every failure the backend
+  answers is, so a connection that could not be made reads as rowtype
+  tells it.
+
 ## 0.2.0 (2026-10-13)
 
 - Breaking: spool builds on rowtype 0.6.0, postgres-eio 0.4.0 and
