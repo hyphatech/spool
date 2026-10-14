@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## 0.3.0 (2026-10-14)
 
 - Breaking: spool builds on rowtype 0.8.0, postgres-eio 0.5.0 and
   wiretype 0.5.0. A runner's failures are told by
