@@ -18,7 +18,8 @@ Postgres backend and names no driver; `spool.mli` is the reference.
 ## Install
 
 ```sh
-opam pin add https://github.com/hyphatech/spool.git
+opam repo add hypha https://github.com/hyphatech/opam-repository.git
+opam install spool
 ```
 
 ```lisp

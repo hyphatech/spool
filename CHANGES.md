@@ -1,5 +1,12 @@
 # Changes
 
+## Unreleased
+
+- Installs from Hypha's opam repository:
+  `opam repo add hypha https://github.com/hyphatech/opam-repository.git`,
+  then `opam install spool`. The `pin-depends` are gone: spool takes
+  wiretype 0.5 and rowtype 0.8, each up to its next breaking release.
+
 ## 0.3.0 (2026-10-14)
 
 - Breaking: spool builds on rowtype 0.8.0, postgres-eio 0.5.0 and
