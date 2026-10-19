@@ -1,8 +1,8 @@
 # AGENTS.md
 
-The spool library is a durable job queue in an application's own Postgres,
-for OCaml 5 and Eio. This file is for anyone changing it, human or agent.
-Users start at [README.md](README.md).
+spool is an OCaml library of Hypha Stack: a durable job queue in an
+application's own Postgres, for OCaml 5 and Eio. This file is for anyone
+changing it, human or agent. Users start at [README.md](README.md).
 
 ## Commands
 
@@ -77,31 +77,3 @@ you broke it. Cite an entry by its bold phrase.
   index, `Hashtbl.find`, `List.assoc`, `int_of_string`, `Char.chr`,
   `List.combine` -- is made only on an input already known to be in range,
   and otherwise its `_opt` is.
-
-## House style
-
-The house style, the OCaml checklist and the OCaml tools are
-[OCAML.md](OCAML.md), the same in every Hypha OCaml repository and changed
-in all of them together, never in one. It is imported here, so it is read
-with this file:
-
-@OCAML.md
-
-## Git
-
-How work becomes a commit -- its format, where it happens, what is pushed
--- is [GIT.md](GIT.md), the same in every Hypha repository and changed in
-all of them together, never in one. It is imported here, so it is read
-with this file:
-
-@GIT.md
-
-## Changes and releases
-
-How a change reaches the library's users -- its line in `CHANGES.md`, what
-is breaking, how a release is tagged and published -- is
-[LIBRARY.md](LIBRARY.md), the same in every Hypha library and changed in
-all of them together, never in one. It is imported here, so it is read
-with this file:
-
-@LIBRARY.md
