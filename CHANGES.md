@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## 0.4.0 (2026-10-19)
 
 - Breaking: wiretype 0.6 is required.
 
