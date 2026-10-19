@@ -26,7 +26,7 @@
   (rowtype (and (>= 0.8.0) (< 0.9.0)))
   (rowtype-postgres (and (>= 0.8.0) (< 0.9.0)))
   (ptime (>= 1.2.0))
-  (wiretype (and (>= 0.5.0) (< 0.6.0)))
+  (wiretype (and (>= 0.6.0) (< 0.7.0)))
   (eio (>= 1.5))
   (logs (>= 0.10.0))
   (mtime (>= 2.1.0))

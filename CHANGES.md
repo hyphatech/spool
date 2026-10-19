@@ -1,5 +1,9 @@
 # Changes
 
+## Unreleased
+
+- Breaking: wiretype 0.6 is required.
+
 ## 0.3.1 (2026-10-16)
 
 - Installs from Hypha's opam repository:
