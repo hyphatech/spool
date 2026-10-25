@@ -1,0 +1,49 @@
+---
+title: Operating a queue
+---
+
+import { Code } from "@astrojs/starlight/components";
+import operating from "@examples/operating.ml?raw";
+
+`find`, `counts`, `cancel` and `retry` are an operator's hand. Each runs on
+a connection of the caller's, as `enqueue` does, and takes a job by the
+`Spool.Id.t` that `enqueue`, `retry` or `Runner.drain` answered. This
+program enqueues a job, cancels it, retries it, finds it, and prints every
+queue's counts:
+
+<Code code={operating} lang="ocaml" title="operating.ml" />
+
+## Counts
+
+`Spool.counts` answers how many jobs each queue holds in each state.
+
+A `Spool.state` is one of five: `Available` (waiting, or scheduled, or to
+be retried), `Running`, `Completed`, `Discarded` (failed on its last
+attempt, expired, or given up) and `Cancelled`.
+
+## Finding a job
+
+`Spool.find` answers a job's `Spool.info`, or `None` where there is no such
+row -- a job pruned, or one completed by a kind that keeps none; `print_job`
+above reads one:
+
+| Field | What it holds |
+|---|---|
+| `id`, `queue`, `kind` | The job, its queue and its kind's name |
+| `state`, `priority` | Where it is, and its priority |
+| `attempt`, `max_attempts` | Attempts begun, and how many it has |
+| `scheduled_at` | When it may run next |
+| `inserted_at`, `finished_at` | When it was written, and finished |
+| `errors` | Each failed attempt: which, when, and why, in the handler's words, oldest first |
+
+## Cancelling and retrying
+
+A cancelled waiting job never runs and a cancelled running one is stopped
+at its runner's next heartbeat; `cancel` answers `false` where it had
+finished.
+
+A retried job is available again from its first attempt with its reasons
+kept, unless a job of its kind already waits under its key, which is then
+the answer, and the retried row stays as it was, so one key never runs
+twice. `retry` takes a discarded or cancelled job, and answers `None` for
+any other, as `cancel` and `retry` above show.

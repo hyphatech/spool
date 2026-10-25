@@ -20,3 +20,13 @@
   mtime
   unix
   alcotest))
+
+; Every example examples/dune builds is imported by some page of the site.
+
+(test
+ (name test_docs)
+ (modules test_docs)
+ (libraries alcotest)
+ (deps
+  (glob_files ../examples/*.ml)
+  (glob_files_rec ../docs/src/content/*.{md,mdx})))

@@ -1,0 +1,28 @@
+; Small programs, each showing one thing an application does with spool,
+; for the documentation site's pages to import. They are built with the
+; repository, so an example that stops compiling as the queue changes is
+; found by the build and not by a reader. Each needs a Postgres to run.
+
+(executables
+ (names quick_start verify kinds enqueueing runner operating testing)
+ (libraries
+  spool
+  rowtype
+  rowtype-postgres
+  wiretype
+  eio
+  eio_main
+  ptime
+  ptime.clock.os
+  mtime
+  alcotest))
+
+; @all builds only the modules a program links, and a piece no program links
+; would be skipped, so @all asks for this directory's @check, which compiles
+; every module.
+
+(rule
+ (alias all)
+ (deps
+  (alias check))
+ (action (progn)))

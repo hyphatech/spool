@@ -1,0 +1,42 @@
+---
+title: Handlers
+---
+
+import { Code } from "@astrojs/starlight/components";
+import mail from "@examples/mail.ml?raw";
+
+A handler is what one attempt at a job of a kind does. `Spool.handle` pairs
+a kind with a function of the attempt and the payload, and the runner is
+given the list:
+
+<Code code={mail} lang="ocaml" title="mail.ml" />
+
+## What it answers
+
+A handler answers `Ok ()`, `Retry reason` (after the kind's backoff),
+`Retry_in (span, reason)` (after what an upstream said) or `Discard reason`
+(never again, and no attempt used: it cannot succeed however long it
+waits). The reason is in words for an operator, kept with the attempt in
+the job's `errors`.
+
+A failed attempt that was the job's last discards it.
+
+## A raise, and a timeout
+
+A raise is a retry whose reason names the exception's constructor, never
+its argument; the log line carries the rest. An attempt past its kind's
+timeout is cancelled and is a failure.
+
+A job's payload has no log level: no line the queue writes, at any level,
+carries it.
+
+## The attempt
+
+`Spool.job` is the attempt a handler is running: its `id`, its `attempt`,
+counting from one, its `max_attempts` and its `inserted_at`.
+
+## At least once
+
+What a job runs is at least once and finished once. A handler whose effect
+must happen once is idempotent, or keyed by the job -- as the handler above
+gives the mail service the job's id, so a receipt sent twice is one.

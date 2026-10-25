@@ -1,0 +1,95 @@
+---
+title: Quick start
+---
+
+import { Code } from "@astrojs/starlight/components";
+import createOrders from "@examples/migrations/20261024000000_create_orders.sql?raw";
+import receipt from "@examples/receipt.ml?raw";
+import quickStart from "@examples/quick_start.ml?raw";
+
+Work that outlives a request, kept where the rest of the application's
+state is: a job is a row written in the transaction that made the work
+owed, claimed by a runner under a lease, run outside every transaction,
+retried with backoff, and finished once in the table however often it was
+attempted. It runs over [rowtype](https://hyphatech.github.io/rowtype/)'s
+Postgres backend and names no driver.
+
+This page takes an order and owes it a receipt, in one transaction, then
+runs a runner that sends the receipt. It needs spool and `rowtype-migrate`
+[installed](/spool/install/), and a Postgres.
+
+## 1. A Postgres
+
+Any Postgres you can reach will do. One in a container, thrown away when it
+stops:
+
+```sh
+docker run --rm -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:18-alpine
+```
+
+## 2. The tables
+
+spool keeps its jobs in a table of its own, made by its own migrations. The
+order is yours, in a migration of your own, a SQL file in `migrations/`:
+
+```console
+$ rowtype-migrate new create_orders
+migrations/20261024000000_create_orders.sql
+```
+
+<Code code={createOrders} lang="sql" title="migrations/20261024000000_create_orders.sql" />
+
+Apply spool's migrations, then yours:
+
+```sh
+rowtype-migrate up --source spool --url postgres://postgres:postgres@localhost:5432/postgres
+```
+
+## 3. The receipt
+
+A kind is a job's name, the [wiretype](https://hyphatech.github.io/wiretype/)
+description of its payload, and how it is run -- here, in the queue `mail`.
+The payload is an object, each member named for what it holds.
+
+The order and its receipt are written in one transaction, through your own
+connection, so a rollback leaves neither; a runner hears of the job when the
+transaction commits. A runner claims the jobs of the queues it is given --
+here `mail`, two at a time -- and runs each kind's handler. Its connections
+are its own, made from the connection string.
+
+Put this module in `bin/receipt.ml`:
+
+<Code code={receipt} lang="ocaml" title="receipt.ml" />
+
+## 4. The program
+
+The program takes one order, starts the runner, gives it two seconds to send
+the receipt, and stops it. Put it in `bin/main.ml`:
+
+<Code code={quickStart} lang="ocaml" title="quick_start.ml" />
+
+Name the libraries it uses in `bin/dune`, with a `dune-project` holding
+`(lang dune 3.18)` beside `bin/`:
+
+```lisp
+(executable
+ (name main)
+ (libraries spool rowtype rowtype-postgres wiretype eio eio_main ptime.clock.os mtime))
+```
+
+```console
+$ dune exec ./bin/main.exe
+Receipt for order 1 sent.
+```
+
+Each run takes another order and sends its receipt.
+
+## Next
+
+- [The table](/spool/guide/table/): the migrations, and what each column
+  holds.
+- [Kinds](/spool/guide/kinds/) and [Enqueueing](/spool/guide/enqueueing/):
+  when a job runs, and how often.
+- [Handlers](/spool/guide/handlers/) and [The
+  runner](/spool/guide/runner/): what an attempt answers, and what the
+  runner does with it.

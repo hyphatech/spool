@@ -1,0 +1,25 @@
+---
+title: Testing
+---
+
+import { Code } from "@astrojs/starlight/components";
+import testing from "@examples/testing.ml?raw";
+
+`Runner.drain` runs every job due at `now ()` through the runner's own claim
+and finish, one at a time on the caller's fiber, and answers what each
+attempt left the job: a test moves its clock and drains, and nothing
+sleeps.
+
+<Code code={testing} lang="ocaml" title="testing.ml" />
+
+- The runner is made as a program makes one, with a `now` the test moves,
+  and never started: `drain` runs the jobs, and no fiber of the runner's
+  does.
+- Each drain answers a job's id and its state once the attempt was
+  finished: `Available` for one to be retried, `Completed`, `Discarded`.
+  A job expired before it ran is answered `Discarded` too.
+- A drain claims nothing that is not due: a retried job waits its backoff,
+  15 s for the first, spread by a tenth either way, until the test moves
+  its clock past it.
+- A drain runs every job due in the database, so each test has a database
+  of its own, made by spool's migrations.

@@ -1,0 +1,55 @@
+---
+title: Enqueueing
+---
+
+import { Code } from "@astrojs/starlight/components";
+import receipt from "@examples/receipt.ml?raw";
+import enqueueing from "@examples/enqueueing.ml?raw";
+
+`Spool.enqueue` writes a job through the caller's connection, in its
+transaction, and answers its id.
+
+## In your transaction
+
+`enqueue` writes the row and nothing else, so a rollback leaves no job; a
+runner hears of it when the transaction commits. The work that made the job
+owed and the job itself are one transaction, written through one
+connection:
+
+<Code code={receipt} lang="ocaml" title="receipt.ml" />
+
+A job written outside a transaction is committed at once, as any statement
+is.
+
+## When it runs
+
+A job may run `~at` an instant, `~after` a span from now, and not after
+`~expires_at`; given neither `~at` nor `~after`, it runs now. A job past
+`expires_at` is discarded unrun. `~priority` overrides its kind's:
+
+<Code code={enqueueing} lang="ocaml" title="enqueueing.ml" />
+
+A runner claims the due jobs of a queue by priority, 0 first, then by the
+instant each was due, then in the order they were written.
+
+## Once for a key
+
+A `~unique` key already waiting in the kind is that job, brought to the
+earlier instant and the higher priority, and its id is the answer: asking
+twice is one job. A key is unique among waiting jobs only, so a change made
+while its job runs is a job of its own.
+
+## What it answers
+
+The job's `Spool.Id.t`, or why it was not written, as `explain` in
+`enqueueing.ml` above tells them apart:
+
+- `` `Bad_priority `` is a priority outside 0 to 9. A priority is a value a
+  caller may compute, so one outside the range is refused rather than
+  raised.
+- `` `Unencodable `` is a payload its kind's description could not write.
+- The rest is the statement's failure, as `rowtype` answers it, and inside
+  `Rowtype_postgres.Transaction.within`, the transaction's own.
+
+An id is a job's handle, for `find`, `cancel` and `retry`: a counter, so
+never put where a stranger could read it.

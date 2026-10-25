@@ -1,0 +1,88 @@
+---
+title: The runner
+---
+
+import { Code } from "@astrojs/starlight/components";
+import runner from "@examples/runner.ml?raw";
+
+A runner runs the named queues, each with how many of its jobs may run at
+once, claiming only the kinds it has a handler for. It is made where the
+program starts, started, and stopped as the program ends:
+
+<Code code={runner} lang="ocaml" title="runner.ml" />
+
+Nothing runs until `Runner.start`, which forks a fiber per queue, the
+heartbeat and the listener on the switch it was made with.
+
+## How it runs a job
+
+| What | How |
+|---|---|
+| Claiming | one statement, `for update skip locked`, in a transaction that commits before the handler starts, so runners in several processes claim from one queue without waiting on each other |
+| Leases | a claim holds a job until `lease_ends_at`; the heartbeat renews every lease the runner holds every quarter lease, and a runner that cannot renew for three quarters of it stops the job itself |
+| Finishing | guarded by the runner and the attempt: a finish from a runner whose lease was taken changes nothing |
+| Rescue | every runner's heartbeat makes every lapsed lease available again, its attempt counted, or discarded where it was the last |
+| Backoff | 15 s doubled each attempt to at most six hours, spread by a tenth either way: twenty attempts span about two and a half days |
+| Waking | `enqueue` notifies the table's channel with the queue's name; the poll is the truth and a notification a hint |
+| Expiry | a job past `expires_at` is discarded unrun |
+| Pruning | hourly, finished rows older than their retention: a day completed, a fortnight discarded or cancelled |
+| Stopping | `stop` claims nothing more, waits a grace for running jobs, then puts back the rest with their attempt not counted |
+
+A job is claimed, run and finished in three transactions, and the work is
+in none of them, so a long job holds no connection and no row lock while it
+runs.
+
+## Its own connections
+
+The runner's connections are its own -- a small pool and a listener --
+because one borrowed from the application's would lose its heartbeats
+exactly when the application is busiest, and a lost heartbeat is a job run
+twice. It is given a `Rowtype_postgres.Conninfo.t`, read from a connection
+string by `Rowtype_postgres.Conninfo.of_string`, and makes them itself.
+
+## Its settings
+
+| Argument | Unless given | What it is |
+|---|---|---|
+| `~now` | | The clock every instant it writes or compares is read from |
+| `?pool_size` | 2 | Its pool's connections |
+| `?poll` | a second | How often a queue looks for due jobs between notifications |
+| `?lease` | a minute | How long a claim holds without renewal, renewed every quarter of it |
+| `?retain_completed` | a day | How long a completed row stays |
+| `?retain_failed` | fourteen days | How long a discarded or cancelled row stays |
+| `?observe` | none | A `Rowtype_postgres.observer` watching every statement on its pool, as an application's own |
+| `~queues` | | Each queue it runs, with how many of its jobs may run at once |
+
+Every wait is an `Mtime.Span.t` on the monotonic clock it is given, and
+every instant the `now` it is given, never the database's clock.
+
+## What it refuses
+
+Before it answers, `Runner.create` checks every statement spool runs
+against the database. It answers `Error` with what it refused, and
+`Runner.refused_to_string` says it in words:
+
+- `Unrun_queue`: a handler's kind is in no queue it runs.
+- `Two_handlers`: one kind handled twice.
+- `No_concurrency`: a queue given fewer than one slot.
+- `Unreachable`: its pool could not be made.
+- `Unmigrated`: the table is missing, or behind what spool runs -- spool's
+  migrations are not applied, and each problem says where. Its pool is
+  closed.
+
+## Stopping
+
+`Runner.stop` claims nothing more, waits up to its `?grace` (ten seconds)
+for running jobs, puts back the rest, their attempt not counted, since they
+were interrupted and did not fail, and closes its connections. It returns
+within the grace and one statement.
+
+A job is also stopped when its attempt passes its kind's timeout, when its
+lease is lost, and when an operator cancels it. Each cancels the handler's
+fiber at its next effect.
+
+## Its log
+
+The runner logs on the `Logs` source `spool`: each attempt and what it came
+to, rescued and pruned rows, and a listener lost. No line carries a job's
+payload.

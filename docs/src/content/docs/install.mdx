@@ -1,0 +1,95 @@
+---
+title: Install
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+You need **opam**, OCaml's package manager, **OCaml 5.5 or later**, and a
+**Postgres** to keep the jobs in. spool brings **dune**, the build tool,
+with it.
+
+## 1. Install opam
+
+<Tabs>
+<TabItem label="macOS">
+
+```sh
+brew install opam
+```
+
+</TabItem>
+<TabItem label="Linux">
+
+```sh
+bash -c "sh <(curl -fsSL https://opam.ocaml.org/install.sh)"
+```
+
+</TabItem>
+</Tabs>
+
+## 2. Set up OCaml
+
+```sh
+opam init
+eval $(opam env)
+```
+
+Answer yes when `opam init` offers to set up your shell. It installs the
+latest OCaml, which takes a few minutes; `eval $(opam env)` lets this
+terminal see it, and a new terminal does by itself.
+
+<details>
+<summary>Already had opam?</summary>
+
+Check `ocaml -version`. If it is older than 5.5, make a switch -- an
+environment of its own -- with the latest OCaml:
+
+```sh
+opam switch create spool ocaml-base-compiler
+eval $(opam env)
+```
+
+</details>
+
+## 3. Install spool
+
+```sh
+opam repo add hypha https://github.com/hyphatech/opam-repository.git
+opam install spool rowtype-migrate
+```
+
+`spool` brings the libraries it runs over:
+[rowtype](https://hyphatech.github.io/rowtype/) and its Postgres backend,
+`rowtype-postgres`, and [wiretype](https://hyphatech.github.io/wiretype/),
+which describes a job's payload. `rowtype-migrate` is the command that makes
+spool's table, beside your own.
+
+A program names the libraries it uses in its `dune` file:
+
+```lisp
+(libraries spool rowtype-postgres eio_main)
+```
+
+## Check it worked
+
+```console
+$ ocaml -version
+The OCaml toplevel, version 5.5.1
+
+$ opam list spool
+```
+
+It lists `spool` with a version, not `--`, under *Installed*. OCaml 5.5 or
+later and an installed `spool` mean you are ready.
+
+## Your editor
+
+For completion, types on hover and errors as you type, install the language
+server, then the **OCaml Platform** extension in VS Code -- or the OCaml
+support of your editor:
+
+```sh
+opam install ocaml-lsp-server
+```
+
+The [quick start](/spool/quick-start/) runs a whole program, next.

@@ -2,7 +2,8 @@
 
 spool is an OCaml library of Hypha Stack: a durable job queue in an
 application's own Postgres, for OCaml 5 and Eio. This file is for anyone
-changing it, human or agent. Users start at [README.md](README.md).
+changing it, human or agent. Users start at [README.md](README.md) and the
+documentation site, [docs/](docs/src/content/docs/index.mdx).
 
 ## Commands
 
@@ -11,11 +12,13 @@ make setup   # once: the switch hypha-spool, all dependencies
 make test    # starts the test Postgres in Podman, runs every test
 make lint    # formatting, odoc, and the release build
 make fmt     # format in place
+make docs    # the documentation site into _build/docs, as Pages publishes it; docs-serve serves it
 ```
 
-`make test` needs `podman compose`. Without `SPOOL_TEST_PG` the cases that
-need a server are skipped, and the test output says so. CI runs
-`make lint` and `make test` on OCaml 5.5.
+`make test` needs `podman compose`, and `make docs` Bun 1.3 or later.
+Without `SPOOL_TEST_PG` the cases that need a server are skipped, and the
+test output says so. CI runs `make lint` and `make test` on OCaml 5.5.
+`docs.yml` publishes the site to GitHub Pages on every push to `main`.
 
 ## Layout
 
@@ -26,15 +29,24 @@ src/
 migrations/      the table's migrations, plain SQL, installed with the package
                  in share/spool/migrations; the tests make their table from
                  them
+docs/            the documentation site, a Starlight site in Hypha's look, from
+                 starlight-theme-hypha: its pages in src/content/docs/, every
+                 example imported from examples/ with Vite's ?raw into
+                 Starlight's <Code>, and
+                 built into _build/docs, which dune clean removes
+examples/        the programs the site shows, each built, and run against a
+                 Postgres by hand
 test/
   test_spool     the queue against a real Postgres: claims, leases taken
                  mid-job, renewals that hang, listeners killed, payloads kept
                  out of every log line
   db_target      a database of a case's own, from SPOOL_TEST_PG
+  test_docs      every example on a page
 ```
 
 The module's contract is its `.mli`. Read `src/spool.mli` before changing
-it.
+it. How to use it is the documentation site, every example imported from
+`examples/` whole: a user-visible change updates its page there.
 
 ## Rules that must hold
 

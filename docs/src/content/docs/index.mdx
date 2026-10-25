@@ -1,0 +1,55 @@
+---
+title: spool
+description: A durable job queue in your own Postgres, for OCaml 5 and Eio.
+template: splash
+---
+
+import { Code } from "@astrojs/starlight/components";
+import Landing from "starlight-theme-hypha/components/Landing.astro";
+import Features from "starlight-theme-hypha/components/Features.astro";
+import Feature from "starlight-theme-hypha/components/Feature.astro";
+import receipt from "@examples/receipt.ml?raw";
+
+<Landing
+  title="A durable job queue in your own Postgres, for OCaml 5 and Eio."
+  tagline="Fewer moving parts: jobs live in the database you already run, commit or roll back with your own changes, and are backed up with your data."
+  actions={[
+    { text: "Get started", link: "/spool/install/", icon: "right-arrow" },
+    { text: "Reference", link: "/spool/reference/", variant: "secondary" },
+  ]}
+>
+
+```sh
+opam repo add hypha https://github.com/hyphatech/opam-repository.git
+opam install spool
+```
+
+<Fragment slot="aside">
+
+<Code code={receipt} lang="ocaml" />
+
+</Fragment>
+</Landing>
+
+<Features>
+  <Feature title="In your transaction" icon="shield-check" href="/spool/guide/enqueueing/" linkText="Enqueueing">
+    A job is a row written with the work that made it owed, so a rollback
+    leaves no job.
+  </Feature>
+  <Feature title="Several processes, one queue" icon="layers" href="/spool/guide/runner/" linkText="The runner">
+    Claims that never wait on each other, leases a heartbeat renews, and a
+    lapsed one rescued.
+  </Feature>
+  <Feature title="Retries with backoff" icon="wrench" href="/spool/guide/handlers/" linkText="Handlers">
+    A handler retries, retries after what an upstream said, or discards.
+  </Feature>
+  <Feature title="Asked twice, one job" icon="boxes" href="/spool/guide/enqueueing/#once-for-a-key" linkText="Unique keys">
+    A unique key folds a second request into the job already waiting.
+  </Feature>
+  <Feature title="Scheduled and prioritised" icon="list-checks" href="/spool/guide/enqueueing/#when-it-runs" linkText="When it runs">
+    At an instant, after a span, until an expiry, at a priority from 0 to 9.
+  </Feature>
+  <Feature title="Tests that never sleep" icon="zap" href="/spool/guide/testing/" linkText="Testing">
+    `Runner.drain` runs every job due at the test's own clock.
+  </Feature>
+</Features>

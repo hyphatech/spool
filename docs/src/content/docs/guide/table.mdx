@@ -1,0 +1,77 @@
+---
+title: The table
+---
+
+import { Code } from "@astrojs/starlight/components";
+import verify from "@examples/verify.ml?raw";
+import createSpoolJobs from "@migrations/20261012000000_create_spool_jobs.sql?raw";
+
+spool keeps its jobs in one table, `spool_jobs` (`Spool.table`), made by
+its own migrations. They are plain SQL, installed with the package in
+`share/spool/migrations`, and applied beside your own as a history of their
+own, before your application starts:
+
+```sh
+rowtype-migrate up --source spool    # spool's migrations, then yours
+```
+
+`--source` needs rowtype 0.5.0 or later; [rowtype's
+migrations](https://hyphatech.github.io/rowtype/) say the rest of the
+command. An upgrade of spool that changes the table ships a new migration,
+and the same command applies it. With another migration tool, copy the
+files from `$(opam var spool:share)/migrations` into its folder: they are
+plain Postgres.
+
+## Checked before a runner starts
+
+A runner checks the table before it starts, and refuses a database where it
+is missing or behind, naming the command to run: `Runner.create` answers
+`Unmigrated`, with each problem it found.
+
+`Spool.statements` is every statement the package runs, for
+`Rowtype_postgres.verify` beside your own. A test that runs it finds a
+migration that broke one before a job does:
+
+<Code code={verify} lang="ocaml" title="verify.ml" />
+
+## States
+
+Five states, and the rest derived: *scheduled* is `available` with a later
+`scheduled_at`, *retrying* is `available` with an attempt made.
+
+| State | What it means |
+|---|---|
+| `available` | waiting, or scheduled, or to be retried |
+| `running` | claimed by a runner, under its lease |
+| `completed` | its handler answered `Ok` |
+| `discarded` | failed on its last attempt, expired, or given up |
+| `cancelled` | cancelled by an operator |
+
+## Columns
+
+| Column | What it holds |
+|---|---|
+| `queue` | The queue a runner claims it from, with that queue's concurrency. |
+| `kind` | What runs it: a kind's name, its identity, so a changed payload shape is a new kind. |
+| `payload` | What the job is given: an object, as its kind's description wrote it. |
+| `priority` | 0 to 9, 0 first: before the instant and the order of enqueueing. |
+| `state` | One of the five above. |
+| `attempt` | Attempts begun: raised by the claim, so a job that kills its process uses one. |
+| `max_attempts` | Its kind's attempts, when it was written. |
+| `scheduled_at` | When it may run next. |
+| `expires_at` | After when it is not worth running, and is discarded unrun. |
+| `unique_key` | Repeated asks of one kind with one key, folded into the job waiting. |
+| `runner` | The runner holding its lease, while it runs. |
+| `lease_ends_at` | Until when its runner holds it, renewed while it runs; a lapsed one is rescued. |
+| `inserted_at`, `attempted_at`, `finished_at` | When it was written, last claimed, and finished. |
+| `errors` | Each failed attempt's attempt, instant and reason, oldest first. |
+
+Every instant in it is the `now` a caller gave: no statement reads the
+database's clock.
+
+<details>
+<summary>The migration that makes it</summary>
+
+<Code code={createSpoolJobs} lang="sql" title="migrations/20261012000000_create_spool_jobs.sql" />
+
+</details>
