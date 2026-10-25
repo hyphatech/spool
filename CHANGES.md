@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## 0.5.0 (2026-10-25)
 
 - Breaking: rowtype 0.9 is required.
 
