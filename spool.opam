@@ -11,8 +11,8 @@ bug-reports: "https://github.com/hyphatech/spool/issues"
 depends: [
   "dune" {>= "3.18"}
   "ocaml" {>= "5.5"}
-  "rowtype" {>= "0.8.0" & < "0.9.0"}
-  "rowtype-postgres" {>= "0.8.0" & < "0.9.0"}
+  "rowtype" {>= "0.9.0" & < "0.10.0"}
+  "rowtype-postgres" {>= "0.9.0" & < "0.10.0"}
   "ptime" {>= "1.2.0"}
   "wiretype" {>= "0.6.0" & < "0.7.0"}
   "eio" {>= "1.5"}

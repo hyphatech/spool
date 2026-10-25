@@ -1,5 +1,9 @@
 # Changes
 
+## Unreleased
+
+- Breaking: rowtype 0.9 is required.
+
 ## 0.4.0 (2026-10-19)
 
 - Breaking: wiretype 0.6 is required.
