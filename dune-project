@@ -18,7 +18,7 @@
 
 (package
  (name spool)
- (synopsis "A durable job queue in your own Postgres, for OCaml 5 and Eio")
+ (synopsis "Durable jobs for modern OCaml, backed by Postgres")
  (description
   "A job is a row written in the transaction that made it owed, claimed by a runner under a lease, run outside any transaction, retried with backoff and finished once, however often it was attempted.")
  (depends

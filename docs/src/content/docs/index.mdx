@@ -1,6 +1,6 @@
 ---
 title: spool
-description: A durable job queue in your own Postgres, for OCaml 5 and Eio.
+description: Durable jobs for modern OCaml, backed by Postgres.
 template: splash
 ---
 
@@ -11,8 +11,8 @@ import Feature from "starlight-theme-hypha/components/Feature.astro";
 import receipt from "@examples/receipt.ml?raw";
 
 <Landing
-  title="A durable job queue in your own Postgres, for OCaml 5 and Eio."
-  tagline="Fewer moving parts: jobs live in the database you already run, commit or roll back with your own changes, and are backed up with your data."
+  title="Durable jobs for modern OCaml, backed by Postgres."
+  tagline="Transactional, reliable and testable. Eio-native and multicore-ready."
   actions={[
     { text: "Get started", link: "/spool/install/", icon: "right-arrow" },
     { text: "Reference", link: "/spool/reference/", variant: "secondary" },

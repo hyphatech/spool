@@ -24,7 +24,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "spool",
-      description: "A durable job queue in your own Postgres, for OCaml 5 and Eio.",
+      description: "Durable jobs for modern OCaml, backed by Postgres.",
       logo: { src: "starlight-theme-hypha/assets/hypha.webp" },
       favicon: "/favicon-32.png",
       head: [
