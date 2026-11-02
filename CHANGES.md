@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## 0.5.1 (2026-11-02)
 
 - rowtype 0.10 is required.
 
