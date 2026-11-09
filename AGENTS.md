@@ -8,7 +8,7 @@ documentation site, [docs/](docs/src/content/docs/index.mdx).
 ## Commands
 
 ```sh
-make setup   # once: the switch hypha-spool, all dependencies
+make setup   # once: the switch spool, all dependencies
 make test    # starts the test Postgres in Podman, runs every test
 make lint    # formatting, odoc, and the release build
 make fmt     # format in place
