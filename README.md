@@ -23,7 +23,7 @@ Transactional, reliable and testable. Eio-native and multicore-ready.
 ## Install
 
 ```sh
-opam repo add hypha https://github.com/hyphatech/opam-repository.git
+opam repo add open-opam https://github.com/open-opam/opam-repository.git
 opam install spool rowtype-migrate
 ```
 

@@ -13,6 +13,7 @@ make test    # starts the test Postgres in Podman, runs every test
 make lint    # formatting, odoc, and the release build
 make fmt     # format in place
 make docs    # the documentation site into _build/docs, as Pages publishes it; docs-serve serves it
+make release VERSION=1.2.3  # once CHANGES.md names it: tag and release with open-opam
 ```
 
 `make test` needs `podman compose`, and `make docs` Bun 1.3 or later.

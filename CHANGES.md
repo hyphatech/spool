@@ -1,5 +1,12 @@
 # Changes
 
+## Unreleased
+
+- Breaking: wiretype 0.7 is required.
+- spool is published to open-opam, `opam repo add open-opam
+  https://github.com/open-opam/opam-repository.git`, and no longer to Hypha's
+  opam repository.
+
 ## 0.5.1 (2026-11-02)
 
 - rowtype 0.10 is required.
