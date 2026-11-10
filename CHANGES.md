@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## 0.6.0 (2026-11-10)
 
 - Breaking: wiretype 0.7 is required.
 - spool is published to open-opam, `opam repo add open-opam
