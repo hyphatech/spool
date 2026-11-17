@@ -7,11 +7,6 @@ title: What it does not do yet
   job to the request that made it owed.
 - **A queue's counts are exported nowhere.** `counts` answers them, and
   nothing turns them into metrics.
-- **A handler's own writes are not part of finishing its job.** A handler
-  writes to the application's tables in a transaction of its own, before
-  the runner records the job complete in another, so a runner that dies
-  between the two runs the job again: a handler's write is idempotent,
-  keyed by the job or by what it writes about.
 - **The dashboard needs a Spindle server.** `spool-dashboard` is routes of
   one, and nothing serves it without.
 - **A handler that never yields cannot be stopped.** A timeout, a lost lease

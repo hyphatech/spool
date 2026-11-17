@@ -23,7 +23,8 @@ OCaml code names it as a module (`Spool_dashboard`).
 - [`Spool`](/spool/reference/spool/Spool/index.html) -- the table, kinds,
   enqueueing, an operator's hand, and running: `table`, `statements`,
   `enqueue`, `enqueue_many`, `enqueue_after`, `find`, `workflow`, `counts`,
-  `jobs`, `cancel`, `retry`, `run_again`, `delete` and `handle`. Its
+  `jobs`, `cancel`, `retry`, `run_again`, `delete`, `handle` and
+  `handle_committing`. Its
   modules:
   - [`Spool.Kind`](/spool/reference/spool/Spool/Kind/index.html) -- a kind
     of job: its name, its payload's description, and how it is run.

@@ -1618,10 +1618,20 @@ type failure =
   | Retry_in of Mtime.Span.t * string
   | Discard of string
 
-type handler =
-  | Handler : 'a Kind.t * (job -> 'a -> (unit, failure) result) -> handler
+(* What a handler's success may carry: a write made in the transaction that
+   completes its job. *)
+type commit = Pg.conn -> (unit, failure) result
 
-let handle kind f = Handler (kind, f)
+type handler =
+  | Handler :
+      'a Kind.t * (job -> 'a -> (commit option, failure) result)
+      -> handler
+
+let handle kind f =
+  Handler (kind, fun job a -> Result.map (fun () -> None) (f job a))
+
+let handle_committing kind f =
+  Handler (kind, fun job a -> Result.map Option.some (f job a))
 
 module Runner = struct
   type refused =
@@ -1902,10 +1912,13 @@ module Runner = struct
   (* ---------------------------------------------------------------- *)
   (* One attempt *)
 
-  type outcome = Done | Failed of failure | Interrupted of interrupted
+  type outcome =
+    | Done of commit option
+    | Failed of failure
+    | Interrupted of interrupted
 
   let outcome_words = function
-    | Done -> "completed"
+    | Done _ -> "completed"
     | Failed (Retry r) -> "failed, to be retried: " ^ r
     | Failed (Retry_in (after, r)) ->
         Format.asprintf "failed, to be retried in %a: %s" Mtime.Span.pp after r
@@ -1929,7 +1942,7 @@ module Runner = struct
           Eio.Time.Timeout.run (Eio.Time.Timeout.v t.clock kind.timeout)
             (fun () ->
               match f job a with
-              | Ok () -> Ok Done
+              | Ok commit -> Ok (Done commit)
               | Error failure -> Ok (Failed failure))
         with
         | Ok o -> o
@@ -1953,7 +1966,8 @@ module Runner = struct
   (* What the attempt came to, written by one statement guarded by the
      claim, and the state it left the job in; [None] where nothing was
      written. *)
-  let finish t (Handler (kind, _)) ~id ~attempt ~max_attempts ~took outcome =
+  let rec finish t (Handler (kind, _) as h) ~id ~attempt ~max_attempts ~took
+      outcome =
     let now = t.now () in
     let s = t.table.s in
     let run_us = Int64.unsigned_div (Mtime.Span.to_uint64_ns took) 1000L in
@@ -1981,13 +1995,42 @@ module Runner = struct
           let* n = Pg.run c st args in
           after_written c counted n)
     in
+    (* The handler's write, made in the transaction that completes its job
+       once the statement guarded by the lease has changed the row, so a
+       runner whose lease was taken makes none; one that fails rolls the
+       completion back with it, and is the attempt's failure. *)
+    let committed commit c n =
+      match commit with
+      | Some write when n > 0 -> (
+          match write c with
+          | Ok () -> Ok n
+          | Error failure -> Error (`Write failure)
+          | exception (Eio.Cancel.Cancelled _ as e) -> raise e
+          | exception e ->
+              let bt = Printexc.get_raw_backtrace () in
+              Log.err (fun m ->
+                  m "%s job %d attempt %d's write raised %s\n%s" kind.name id
+                    attempt (Printexc.to_string e)
+                    (Printexc.raw_backtrace_to_string bt));
+              Error (`Write (Retry (Printexc.exn_slot_name e ^ " raised"))))
+      | Some _ | None -> Ok n
+    in
     let written =
       match outcome with
       | Interrupted _ -> None
-      | Done ->
+      | Done commit ->
           Some
             ( (if kind.keep then
-                 write Counted_completed s.complete (id, t.runner, attempt, now)
+                 use t (fun c ->
+                     let* () =
+                       Pg.run c s.count_attempt
+                         (id, t.runner, attempt, now, Counted_completed, run_us)
+                     in
+                     let* n =
+                       Pg.run c s.complete (id, t.runner, attempt, now)
+                     in
+                     let* n = after_written c Counted_completed n in
+                     committed commit c n)
                else
                  use t (fun c ->
                      let* () =
@@ -2002,7 +2045,8 @@ module Runner = struct
                        else
                          Pg.run c s.complete_emptied (id, t.runner, attempt, now)
                      in
-                     after_written c Counted_completed n)),
+                     let* n = after_written c Counted_completed n in
+                     committed commit c n)),
               Completed )
       | Failed (Discard reason) ->
           Some
@@ -2051,7 +2095,10 @@ module Runner = struct
             m "%s; its lease was taken or the job cancelled, so nothing changed"
               (said ()));
         None
-    | Some (Error e, _) ->
+    | Some (Error (`Write failure), _) ->
+        (* Rolled back with its write: the attempt is that failure. *)
+        finish t h ~id ~attempt ~max_attempts ~took (Failed failure)
+    | Some (Error (#Pg.error as e), _) ->
         Log.warn (fun m -> m "%s, and not recorded: %s" (said ()) (words e));
         None
 

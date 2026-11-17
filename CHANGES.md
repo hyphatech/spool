@@ -1,5 +1,12 @@
 # Changes
 
+## Unreleased
+
+- `Spool.handle_committing`: a handler answers a write to the
+  application's own tables, made in the transaction that completes its job
+  and only under its lease, so the job is completed and the write made
+  together, or neither; a write that fails is the attempt's failure.
+
 ## 0.7.0 (2026-11-17)
 
 - A new package, `spool-dashboard`: a live dashboard for the queue, as

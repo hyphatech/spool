@@ -378,6 +378,151 @@ let test_a_raise_is_a_retry_named_by_its_constructor () =
           J.Runner.stop r
       | _ -> Alcotest.fail "one reason")
 
+(* ------------------------------------------------------------------ *)
+(* A handler's write, committed with its job's completion *)
+
+exception Write_raised of string
+
+(* The application's own table, a row a job written by its handler. *)
+let with_written f =
+  with_table (fun target conn ->
+      Db_target.exec conn
+        "create table written (job text primary key, note text)";
+      f target conn)
+
+let write_row =
+  Rowtype.exec
+    ~params:Rowtype.(t2 text text)
+    "insert into written (job, note) values ($1, $2)"
+
+let written conn =
+  ok "written"
+    (Pg.run conn
+       (Rowtype.find ~params:Rowtype.unit ~row:Rowtype.int
+          "select count(*)::int from written")
+       ())
+
+(* The write a handler hands back: the row, then what [answer] says. *)
+let write ?(answer = fun () -> Ok ()) (job : J.job) note conn =
+  match Pg.run conn write_row (J.Id.to_string job.id, note) with
+  | Error e -> Error (J.Retry (Rowtype.error_to_string e))
+  | Ok () -> answer ()
+
+let test_a_write_commits_with_the_completion () =
+  with_written (fun target conn ->
+      let now, _ = clock () in
+      let kind = text "note" in
+      let id = enqueue conn ~now:(now ()) kind "hello" in
+      let r =
+        runner ~now target
+          [ J.handle_committing kind (fun job note -> Ok (write job note)) ]
+      in
+      Alcotest.check outcomes "completed" [ (id, J.Completed) ] (drain r);
+      check_int "its row written" 1 (written conn);
+      J.Runner.stop r)
+
+let test_a_write_that_fails_rolls_back_and_is_the_failure () =
+  with_written (fun target conn ->
+      let now, _ = clock () in
+      let kind = text "note" in
+      let id = enqueue conn ~now:(now ()) kind "hello" in
+      let r =
+        runner ~now target
+          [
+            J.handle_committing kind (fun job note ->
+                Ok
+                  (write ~answer:(fun () -> Error (J.Retry "not yet")) job note));
+          ]
+      in
+      Alcotest.check outcomes "retried" [ (id, J.Available) ] (drain r);
+      check_int "its row rolled back" 0 (written conn);
+      (match (find conn id).errors with
+      | [ f ] -> Alcotest.(check string) "the write's reason" "not yet" f.reason
+      | _ -> Alcotest.fail "one reason");
+      J.Runner.stop r)
+
+let test_a_write_that_raises_rolls_back_and_is_retried () =
+  with_written (fun target conn ->
+      let now, _ = clock () in
+      let kind = text "note" in
+      let id = enqueue conn ~now:(now ()) kind "hello" in
+      let r =
+        runner ~now target
+          [
+            J.handle_committing kind (fun job note ->
+                Ok
+                  (write
+                     ~answer:(fun () -> raise (Write_raised "a secret"))
+                     job note));
+          ]
+      in
+      Alcotest.check outcomes "retried" [ (id, J.Available) ] (drain r);
+      check_int "its row rolled back" 0 (written conn);
+      (match (find conn id).errors with
+      | [ f ] ->
+          check_bool "named by its constructor" true
+            (String.ends_with ~suffix:"Write_raised raised" f.reason)
+      | _ -> Alcotest.fail "one reason");
+      J.Runner.stop r)
+
+let test_a_write_discards () =
+  with_written (fun target conn ->
+      let now, _ = clock () in
+      let kind = text "note" in
+      let id = enqueue conn ~now:(now ()) kind "hello" in
+      let r =
+        runner ~now target
+          [
+            J.handle_committing kind (fun job note ->
+                Ok
+                  (write
+                     ~answer:(fun () -> Error (J.Discard "no such order"))
+                     job note));
+          ]
+      in
+      Alcotest.check outcomes "discarded" [ (id, J.Discarded) ] (drain r);
+      check_int "its row rolled back" 0 (written conn);
+      J.Runner.stop r)
+
+(* The lease taken while the handler worked: the finish changes nothing, so
+   its write is not made. *)
+let test_a_write_is_not_made_without_the_lease () =
+  with_written (fun target conn ->
+      let now, _ = clock () in
+      let kind = text "note" in
+      let id = enqueue conn ~now:(now ()) kind "hello" in
+      let r =
+        runner ~now target
+          [
+            J.handle_committing kind (fun job note ->
+                Db_target.exec conn
+                  (Printf.sprintf
+                     "update spool_jobs set runner = 'somebody else' where id \
+                      = %s"
+                     (J.Id.to_string job.id));
+                Ok (write job note));
+          ]
+      in
+      ignore (drain r : (J.Id.t * J.state) list);
+      check_int "no row written" 0 (written conn);
+      Alcotest.check state "still the other's" J.Running (find conn id).state;
+      J.Runner.stop r)
+
+let test_a_kind_that_keeps_nothing_commits_its_write () =
+  with_written (fun target conn ->
+      let now, _ = clock () in
+      let kind = text ~keep:false "note" in
+      let id = enqueue conn ~now:(now ()) kind "hello" in
+      let r =
+        runner ~now target
+          [ J.handle_committing kind (fun job note -> Ok (write job note)) ]
+      in
+      Alcotest.check outcomes "completed" [ (id, J.Completed) ] (drain r);
+      check_int "its row written" 1 (written conn);
+      check_bool "the job gone" true
+        (Option.is_none (ok "find" (J.find conn id)));
+      J.Runner.stop r)
+
 let test_a_timeout_is_a_failure () =
   with_table (fun target conn ->
       let now, _ = clock () in
@@ -1815,6 +1960,17 @@ let () =
             test_discard_uses_no_attempt;
           Alcotest.test_case "a raise is a retry named by its constructor"
             `Quick test_a_raise_is_a_retry_named_by_its_constructor;
+          Alcotest.test_case "a write commits with the completion" `Quick
+            test_a_write_commits_with_the_completion;
+          Alcotest.test_case "a write that fails rolls back and is the failure"
+            `Quick test_a_write_that_fails_rolls_back_and_is_the_failure;
+          Alcotest.test_case "a write that raises rolls back and is retried"
+            `Quick test_a_write_that_raises_rolls_back_and_is_retried;
+          Alcotest.test_case "a write discards" `Quick test_a_write_discards;
+          Alcotest.test_case "a write is not made without the lease" `Quick
+            test_a_write_is_not_made_without_the_lease;
+          Alcotest.test_case "a kind that keeps nothing commits its write"
+            `Quick test_a_kind_that_keeps_nothing_commits_its_write;
           Alcotest.test_case "a timeout is a failure" `Quick
             test_a_timeout_is_a_failure;
           Alcotest.test_case "a payload that no longer decodes is discarded"
