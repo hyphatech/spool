@@ -484,6 +484,27 @@ type handler
 
 val handle : 'a Kind.t -> (job -> 'a -> (unit, failure) result) -> handler
 
+val handle_committing :
+  'a Kind.t ->
+  (job ->
+  'a ->
+  (Rowtype_postgres.conn -> (unit, failure) result, failure) result) ->
+  handler
+(** As {!handle}, for work that ends in a write to the application's own tables:
+    the handler does its work outside every transaction, as any does, and
+    answers the write, which the runner makes in the transaction that completes
+    the job -- after the statement guarded by the lease, so a runner whose lease
+    was taken makes no write. The job is completed and the write made together,
+    or neither: a write that answers a {!failure} rolls both back and is that
+    failure, and one that raises is a {!Retry} named by its constructor. Its
+    connection is the runner's own, on the database the runner was given.
+
+    {[
+    Spool.handle_committing receipt (fun _job order ->
+        let url = Pdf.render order in
+        Ok (fun conn -> Invoices.set_pdf conn order url))
+    ]} *)
+
 module Runner : sig
   type t
 

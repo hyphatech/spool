@@ -35,8 +35,29 @@ carries it.
 `Spool.job` is the attempt a handler is running: its `id`, its `attempt`,
 counting from one, its `max_attempts` and its `inserted_at`.
 
+## A write with the completion
+
+Where an attempt's work ends in a write to the application's own tables,
+`Spool.handle_committing` makes it in the transaction that completes the
+job. The handler does its work outside every transaction, as any does, and
+answers the write:
+
+```ocaml
+Spool.handle_committing invoice (fun _job order ->
+    let url = Pdf.render order in
+    Ok (fun conn -> Invoices.set_pdf conn order url))
+```
+
+The job is completed and the write made together, or neither. The write
+runs after the statement guarded by the lease, so a runner whose lease was
+taken makes none. A write that answers a failure rolls both back and is
+that failure -- retried, or discarded -- and one that raises is a retry
+named by its constructor. Its connection is the runner's own, on the
+database the runner was given, so the tables it writes are there.
+
 ## At least once
 
-What a job runs is at least once and finished once. A handler whose effect
-must happen once is idempotent, or keyed by the job -- as the handler above
+What a job runs is at least once and finished once. A write made with the
+completion happens once; any other effect a handler has that must happen
+once is idempotent, or keyed by the job -- as the handler above
 gives the mail service the job's id, so a receipt sent twice is one.

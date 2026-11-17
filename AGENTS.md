@@ -95,6 +95,13 @@ you broke it. Cite an entry by its bold phrase.
   machine's. Symptom: a pause or a limit read from `Runner.create`'s
   arguments; the suite pauses a queue and finds no runner claims from it,
   one made after the pause among them.
+- **A handler's write is made with its job's completion, under its
+  lease.** `handle_committing`'s write runs in the transaction that
+  completes the job, after the statement guarded by the lease, and a write
+  that fails rolls the completion back, so a write is made once, by the
+  runner that finished the job. Symptom: a write made by a runner whose
+  lease was taken, or one left by a completion rolled back; `test_spool`
+  takes a lease from under a write, and fails and raises in one.
 - **A limit holds across runners, counted under the queue's lock.** A
   limited queue's claim takes the queue's advisory lock and counts what
   runs and what began in the rate's period before it claims, since a limit
