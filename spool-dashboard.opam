@@ -28,11 +28,11 @@ depends: [
   "alcotest" {with-test & >= "1.9.1"}
   "melange" {with-test & >= "7.0.1-55"}
   "mlx" {with-test & >= "0.11"}
-  "ppx_solidtype" {with-test & >= "0.11.0" & < "0.12.0"}
-  "solidtype" {with-test & >= "0.11.0" & < "0.12.0"}
-  "solidtype-heroui" {with-test & >= "0.11.0" & < "0.12.0"}
-  "solidtype-rhp" {with-test & >= "0.11.0" & < "0.12.0"}
-  "solidtype-gravity-icons" {with-test & >= "0.11.0" & < "0.12.0"}
+  "ppx_solidtype" {with-test & >= "0.11.1" & < "0.12.0"}
+  "solidtype" {with-test & >= "0.11.1" & < "0.12.0"}
+  "solidtype-heroui" {with-test & >= "0.11.1" & < "0.12.0"}
+  "solidtype-rhp" {with-test & >= "0.11.1" & < "0.12.0"}
+  "solidtype-gravity-icons" {with-test & >= "0.11.1" & < "0.12.0"}
   "ocamlformat-mlx" {with-dev-setup & = "0.29.0.1"}
   "odoc" {with-doc}
 ]

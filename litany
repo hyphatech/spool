@@ -7,8 +7,3 @@
  (forbid Stdlib.invalid_arg
   (use "a result: invalid_arg is a constant's, written in source: Kind.make's and Schedule.make's")
   (except src/spool.ml dashboard/web/src/main.ml test/** examples/**)))
-
-(per-path
- (paths dashboard/web/**)
- (ignore suspicious-literal-condition)
- (reason "solidtype's JSX preprocessor writes literal conditions in the code it generates"))
