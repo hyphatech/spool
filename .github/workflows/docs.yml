@@ -30,7 +30,7 @@ jobs:
           opam-repositories: |
             open-opam: https://github.com/open-opam/opam-repository.git
             default: https://opam.ocaml.org
-      - run: opam install . --deps-only --with-dev-setup -y
+      - run: opam install . --deps-only --with-dev-setup -y --ignore-constraints-on=deps-of-spool
       - uses: oven-sh/setup-bun@v2
       # Use setup-ocaml's switch instead of the Makefile's.
       - run: make docs OPAM="opam exec --"

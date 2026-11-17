@@ -1,0 +1,231 @@
+module Button = Solidtype_heroui.Button
+module For = Solidtype.For
+module Show = Solidtype.Show
+module Gravity = Solidtype_gravity_icons
+module Jsx = Solidtype.Jsx
+module List_box = Solidtype_heroui.List_box
+module S = Solidtype.Solid
+module Switch = Solidtype_heroui.Switch
+module Toast = Solidtype_heroui.Toast
+
+(* The left column: what the queue holds by state, its queues and their
+   switches, its schedules, and the runners working it. *)
+
+(* What waits and runs is exact; what finished in the last day is summed
+   from spool's statistics; the cancelled have no number, which nothing
+   counts without reading every finished row. *)
+let count_of ~(counts : Api.queue_count array) ~(day : Api.day array)
+    (state : Page.state) =
+  let sum f a = Array.fold_left (fun n x -> n +. f x) 0. a in
+  match state with
+  | Available -> Some (sum (fun (c : Api.queue_count) -> c.available) counts)
+  | Blocked -> Some (sum (fun (c : Api.queue_count) -> c.blocked) counts)
+  | Running -> Some (sum (fun (c : Api.queue_count) -> c.running) counts)
+  | Completed -> Some (sum (fun (d : Api.day) -> d.completed) day)
+  | Discarded -> Some (sum (fun (d : Api.day) -> d.discarded) day)
+  | Cancelled -> None
+
+(* A dot set in its word's line, on the middle of its lowercase: in a flex
+   row it would be centred on the line box, above the letters. *)
+let dot (state : Page.state) =
+  "me-2.5 inline-block size-2 rounded-full align-middle "
+  ^
+  match state with
+  | Available -> "bg-muted"
+  | Blocked -> "border border-muted"
+  | Running -> "bg-accent"
+  | Completed -> "bg-success"
+  | Discarded -> "bg-danger"
+  | Cancelled -> "bg-separator"
+
+let in_day (state : Page.state) =
+  match state with
+  | Completed | Discarded -> "last 24h"
+  | Available | Blocked | Running | Cancelled -> ""
+
+let heading text =
+  <h2 class_="t-label px-2.5 pb-1.5 text-muted">(Jsx.string text)</h2>
+
+let slots (r : Api.runner) =
+  String.concat ", "
+    (Array.to_list
+       (Array.map
+          (fun (q : Api.runner_queue) ->
+            q.queue ^ {js| × |js} ^ Page.count q.slots)
+          r.queues))
+
+let limits (q : Api.queue) =
+  let limit =
+    match q.limit with Some n -> [ Page.count n ^ " at once" ] | None -> []
+  and rate =
+    match q.rate with
+    | Some r ->
+        [ Page.count r.attempts ^ " per " ^ Page.span (r.per_ms /. 1000.) ]
+    | None -> []
+  and partition = if q.per_partition then [ "per partition" ] else [] in
+  String.concat {js| · |js} (limit @ rate @ partition)
+
+(* A schedule's job enqueued now, beside its ticks: one a press, the button
+   held until the server has answered, so a double click is one job. *)
+let run_now ~set_busy (s : Api.schedule) =
+  S.set set_busy true;
+  Page.settle
+    (Js.Promise.then_
+       (fun answered ->
+         S.set set_busy false;
+         Js.Promise.resolve answered)
+       (Api.post_api_schedules_schedule_run ~origin:(Page.origin ())
+          ~schedule:s.name ()))
+    ~ok:(fun (e : Api.enqueued) ->
+      ignore
+        (Toast.success
+           ~description:("Job #" ^ e.id ^ " waits in " ^ s.queue)
+           (s.name ^ " is enqueued")
+          : Toast.key))
+
+let%component make ~(counts : Api.queue_count array) ~(day : Api.day array)
+    ~(runners : Api.runner array) ~(queues : Api.queue array)
+    ~(schedules : Api.schedule array) ~(now : float)
+    ~(state : Page.state option) ~(on_state : Page.state option -> unit)
+    ~(on_pause : Api.queue -> bool -> unit) ~(may : Page.action -> bool) () =
+  <aside
+    class_="flex w-72 shrink-0 flex-col gap-7 overflow-y-auto border-e \
+            border-separator bg-surface-secondary px-3 py-5">
+    <div class_="flex items-center gap-2 px-2.5">
+      <Gravity.Layers class_="size-5 text-accent" />
+      <span class_="text-lg font-semibold">"spool"</span>
+    </div>
+    <nav aria_label="States" class_="flex flex-col gap-0.5">
+      (heading "States")
+      <List_box
+        aria_label="States"
+        class_="p-0"
+        selection_mode=`single
+        selected_keys=(match S.get state with
+                      | Some s -> [| Page.state_key s |]
+                      | None -> [||])
+        on_selection_change=(fun keys ->
+                              on_state
+                                (match keys with
+                                | [| key |] -> Page.state_of_key key
+                                | _ -> None))>
+        <For each=(Array.of_list Page.states)>
+          (fun (s : Page.state) _ ->
+            <List_box.Item
+              id=(Page.state_key s)
+              text_value=(Page.state_label s)
+              class_="min-h-0 gap-2.5 px-2.5 text-sm">
+              <span>
+                <span class_=(dot s) /> (Jsx.string (Page.state_label s))
+              </span>
+              <span class_="ms-auto flex items-baseline gap-1.5">
+                <span class_="text-xs text-muted">(Jsx.string (in_day s))</span>
+                <span class_="text-sm font-medium tabular-nums text-foreground">
+                  (Jsx.string
+                     (match
+                        count_of ~counts:(S.get counts) ~day:(S.get day) s
+                      with
+                     | Some n -> Page.count n
+                     | None -> {js|–|js}))
+                </span>
+              </span>
+            </List_box.Item>)
+        </For>
+      </List_box>
+    </nav>
+    <section aria_label="Queues" class_="flex flex-col gap-0.5">
+      (heading "Queues")
+      <For
+        each=(S.get queues)
+        fallback=(<p class_="px-2.5 text-sm text-muted">"No queue yet."</p>)>
+        (fun (q : Api.queue) _ ->
+          <div class_="flex items-center gap-2 rounded px-2.5 py-1.5">
+            <div class_="flex min-w-0 flex-col">
+              <span class_="truncate text-sm">(Jsx.string q.name)</span>
+              <span class_="truncate text-xs text-muted">
+                (Jsx.string (if q.paused then "Paused" else limits q))
+              </span>
+            </div>
+            <span class_="ms-auto flex items-center gap-1">
+              <Show when_=(may Set_limits)><Limits queue=q /></Show>
+              <Switch
+                size=`sm
+                aria_label=((if q.paused then "Resume " else "Pause ") ^ q.name)
+                is_disabled=(not (may (if q.paused then Resume else Pause)))
+                is_selected=(not q.paused)
+                on_change=(fun running -> on_pause q (not running))>
+                <Switch.Content>
+                  <Switch.Control><Switch.Thumb /></Switch.Control>
+                </Switch.Content>
+              </Switch>
+            </span>
+          </div>)
+      </For>
+    </section>
+    <section aria_label="Schedules" class_="flex flex-col gap-0.5">
+      (heading "Schedules")
+      <For
+        each=(S.get schedules)
+        fallback=(<p class_="px-2.5 text-sm text-muted">
+                    "No runner holds a schedule."
+                  </p>)>
+        (fun (s : Api.schedule) _ ->
+          let busy, set_busy = S.create_signal false in
+          <div
+            class_="flex items-center gap-2 rounded px-2.5 py-1.5"
+            title=(s.kind ^ " in " ^ s.queue)>
+            <div class_="flex min-w-0 flex-col">
+              <span class_="truncate text-sm">(Jsx.string s.name)</span>
+              <span class_="truncate font-mono text-xs text-muted">
+                (Jsx.string (s.cron ^ {js| · |js} ^ s.zone))
+              </span>
+            </div>
+            <span
+              class_="ms-auto whitespace-nowrap text-xs tabular-nums text-muted">
+              (Jsx.string (Page.until ~now:(S.get now) s.next_at))
+            </span>
+            <Show when_=(may Run_schedule)>
+              <Button
+                variant=`ghost
+                size=`sm
+                is_icon_only=true
+                class_="size-7 min-w-7"
+                aria_label=("Run " ^ s.name ^ " now")
+                is_disabled=(S.get busy)
+                on_click=(fun _ -> run_now ~set_busy s)>
+                <Gravity.Play class_="size-3.5" />
+              </Button>
+            </Show>
+          </div>)
+      </For>
+    </section>
+    <section aria_label="Workers" class_="flex flex-col gap-0.5">
+      (heading "Workers")
+      <For
+        each=(S.get runners)
+        fallback=(<p class_="px-2.5 text-sm text-muted">
+                    "No runner is running."
+                  </p>)>
+        (fun (r : Api.runner) _ ->
+          <div class_="flex flex-col gap-0.5 rounded px-2.5 py-1.5">
+            <div class_="flex items-baseline gap-2 text-sm">
+              <span class_="truncate">
+                <span
+                  class_="me-2 inline-block size-2 rounded-full bg-success \
+                          align-middle"
+                />
+                (Jsx.string r.host)
+              </span>
+              <span
+                class_="ms-auto whitespace-nowrap text-xs tabular-nums \
+                        text-muted">
+                (Jsx.string (Page.ago ~now:(S.get now) r.seen_at))
+              </span>
+            </div>
+            <span class_="truncate ps-4 text-xs text-muted">
+              (Jsx.string (slots r))
+            </span>
+          </div>)
+      </For>
+    </section>
+  </aside>

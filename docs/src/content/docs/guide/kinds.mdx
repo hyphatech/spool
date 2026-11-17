@@ -28,6 +28,8 @@ argument of `Spool.Kind.make`:
 | `?timeout` | five minutes | An attempt's bound: one past it is cancelled and is a failure |
 | `?backoff` | 15 s doubled each attempt to at most six hours, spread by a tenth either way | How long the attempt after `attempt` waits: twenty attempts span about two and a half days |
 | `?keep` | `true` | `false` deletes a job the moment it completes, so a payload that should not outlive its work does not |
+| `?partition` | none | The partition a job is in, from its payload: what a queue limited per partition counts by ([Limiting a queue](/spool/guide/limiting/)) |
+| `?sensitive` | `false` | Keeps its jobs' payloads from every answer of spool's -- `find`, `jobs`, the dashboard -- as every payload is kept from every log line |
 
 `report` in `kinds.ml` above gives each of them.
 

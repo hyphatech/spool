@@ -1,0 +1,37 @@
+module Button = Solidtype_heroui.Button
+module Dropdown = Solidtype_heroui.Dropdown
+module For = Solidtype.For
+module Gravity = Solidtype_gravity_icons
+module Jsx = Solidtype.Jsx
+module Label = Solidtype_heroui.Label
+module S = Solidtype.Solid
+
+(* A filter of one value among several, all of them where none is chosen.
+   A component, so a list of values that changes -- the kinds come with
+   the chart, each second -- changes its items and leaves its menu open. *)
+let all = "all"
+
+let%component make ~(label : string) ~(chosen : string option)
+    ~(values : string array) ~(on_pick : string option -> unit) () =
+  <Dropdown>
+    <Button variant=`tertiary size=`sm>
+      (Jsx.string
+         (S.get label ^ ": " ^ Option.value (S.get chosen) ~default:all))
+      <Gravity.Chevron_down class_="size-3.5" />
+    </Button>
+    <Dropdown.Popover>
+      <Dropdown.Menu
+        on_action=(fun key ->
+                    on_pick (if String.equal key "" then None else Some key))>
+        <Dropdown.Item id="" text_value=all>
+          <Label>(Jsx.string all)</Label>
+        </Dropdown.Item>
+        <For each=(S.get values)>
+          (fun v _ ->
+            <Dropdown.Item id=v text_value=v>
+              <Label>(Jsx.string v)</Label>
+            </Dropdown.Item>)
+        </For>
+      </Dropdown.Menu>
+    </Dropdown.Popover>
+  </Dropdown>

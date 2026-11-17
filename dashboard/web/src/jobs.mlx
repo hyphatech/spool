@@ -1,0 +1,393 @@
+module Button = Solidtype_heroui.Button
+module Card = Solidtype_heroui.Card
+module Checkbox = Solidtype_heroui.Checkbox
+module Chip = Solidtype_heroui.Chip
+module Dropdown = Solidtype_heroui.Dropdown
+module Empty_state = Solidtype_heroui.Empty_state
+module For = Solidtype.For
+module Gravity = Solidtype_gravity_icons
+module Jsx = Solidtype.Jsx
+module Label = Solidtype_heroui.Label
+module S = Solidtype.Solid
+module Show = Solidtype.Show
+module Table = Solidtype_heroui.Table
+module Toast = Solidtype_heroui.Toast
+module Toggle_button = Solidtype_heroui.Toggle_button
+module Toggle_button_group = Solidtype_heroui.Toggle_button_group
+
+(* A page of jobs, newest first: the next is fetched before the last one
+   shown, and each page passed is kept to go back to. *)
+let page_size = 50
+
+type filter = {
+  minute : (Api.Instant.t * Api.get_api_jobs_ended) option;
+  state : Page.state option;
+  queue : string option;
+  kind : string option;
+  before : string option;
+  live : int;  (** a change of the queue's counts, which fetches again *)
+}
+
+let fetch (f : filter) _ =
+  Js.Promise.then_
+    (fun answered ->
+      Js.Promise.resolve
+        (match answered with
+        | Ok jobs -> jobs
+        | Error e ->
+            ignore
+              (Toast.danger ~description:(Page.said e) "Could not list the jobs"
+                : Toast.key);
+            [||]))
+    (Api.get_api_jobs ~origin:(Page.origin ())
+       ?state:(Option.map Page.to_query f.state)
+       ?queue:f.queue ?kind:f.kind ?before:f.before
+       ?minute:(Option.map fst f.minute) ?ended:(Option.map snd f.minute)
+       ~limit:page_size ())
+
+let done_words ~verb (o : Api.outcome) =
+  let n = Array.length o.applied and left = Array.length o.skipped in
+  string_of_int n ^ " " ^ verb
+  ^ if left > 0 then ", " ^ string_of_int left ^ " left as they were" else ""
+
+(* The minute picked on the chart, as the filter bar shows it: its time, how
+   its attempts ended, and a way back to every job. *)
+let clock_of (m : Api.Instant.t) =
+  let d = Api.Instant.to_date m in
+  let two n =
+    let s = string_of_int (int_of_float n) in
+    if String.length s < 2 then "0" ^ s else s
+  in
+  two (Js.Date.getHours d) ^ ":" ^ two (Js.Date.getMinutes d)
+
+let ended_key : Api.get_api_jobs_ended -> string = function
+  | Either -> "either"
+  | Done -> "done"
+  | Failed -> "failed"
+
+let ended_of_key : string -> Api.get_api_jobs_ended option = function
+  | "either" -> Some Either
+  | "done" -> Some Done
+  | "failed" -> Some Failed
+  | _ -> None
+
+let moment_label (m : Api.moment) =
+  match m.outcome with
+  | Completed -> "Completed"
+  | Failed -> {js|Failed · attempt |js} ^ Page.count m.attempt
+  | Discarded -> "Discarded"
+
+(* Whether the job is now otherwise than its attempt left it in the minute,
+   which only then needs saying. *)
+let moment_changed (m : Api.moment) (state : Page.state) =
+  match (m.outcome, state) with
+  | Completed, Completed | Discarded, Discarded -> false
+  | (Completed | Failed | Discarded), _ -> true
+
+let moment_colour (m : Api.moment) =
+  match m.outcome with
+  | Completed -> `success
+  | Failed -> `warning
+  | Discarded -> `danger
+
+(* The kinds that ran in a queue, or in any where none is chosen, each once:
+   a kind runs in one queue, so another's kinds would only list nothing. *)
+let kinds_in ~queue (kinds : Api.queue_kind array) =
+  Array.to_list kinds
+  |> List.filter (fun (k : Api.queue_kind) ->
+      match queue with None -> true | Some q -> String.equal k.queue q)
+  |> List.map (fun (k : Api.queue_kind) -> k.kind)
+  |> List.sort_uniq String.compare
+  |> Array.of_list
+
+let%component make ~(state : Page.state option) ~(queues : string array)
+    ~(kinds : Api.queue_kind array) ~(live : int) ~(now : float)
+    ~(minute : Api.Instant.t option) ~(on_clear_minute : unit -> unit)
+    ~(on_open : string -> unit) ~(may : Page.action -> bool) () =
+  let ended, set_ended =
+    S.create_signal (Api.Either : Api.get_api_jobs_ended)
+  in
+  let queue, set_queue = S.create_signal None in
+  let kind, set_kind = S.create_signal None in
+  (* The ids each page passed began after, the latest first. *)
+  let passed, set_passed = S.create_signal [] in
+  let selected, set_selected = S.create_signal [||] in
+  let source () =
+    Some
+      {
+        minute = Option.map (fun m -> (m, S.get ended)) (S.get minute);
+        state = S.get state;
+        queue = S.get queue;
+        kind = S.get kind;
+        before = (match S.get passed with b :: _ -> Some b | [] -> None);
+        live = S.get live;
+      }
+  in
+  let jobs, actions = S.create_resource_from source fetch in
+  let shown () = Option.value (S.latest jobs) ~default:[||] in
+  let restart () =
+    S.batch (fun () ->
+        S.set set_passed [];
+        S.set set_selected [||])
+  in
+  (* A filter changed starts again from the newest. *)
+  S.create_effect (fun () ->
+      ignore (S.get state : Page.state option);
+      ignore (S.get minute : Api.Instant.t option);
+      ignore (S.get ended : Api.get_api_jobs_ended);
+      S.untrack restart);
+  let next () =
+    let all = shown () in
+    if Array.length all > 0 then
+      let (last : Api.job) = all.(Array.length all - 1) in
+      S.batch (fun () ->
+          S.set set_passed (last.id :: S.get passed);
+          S.set set_selected [||])
+  in
+  let previous () =
+    S.batch (fun () ->
+        S.set set_passed
+          (match S.get passed with _ :: rest -> rest | [] -> []);
+        S.set set_selected [||])
+  in
+  let act ~verb call =
+    match S.get selected with
+    | [||] -> ()
+    | ids ->
+        Page.settle
+          (call ({ ids } : Api.selection))
+          ~ok:(fun (o : Api.outcome) ->
+            S.set set_selected [||];
+            S.refetch actions;
+            ignore (Toast.success (done_words ~verb o) : Toast.key))
+  in
+  let some_selected () = Array.length (S.get selected) > 0 in
+  (* A selection is made to act on, so none is made where the viewer may do
+     nothing with one. *)
+  let selectable () = may Retry || may Cancel || may Delete in
+  <div class_="flex min-h-0 flex-1 flex-col gap-3">
+    <div class_="flex flex-wrap items-center gap-2">
+      <Picker
+        label="Queue"
+        chosen=(S.get queue)
+        values=(S.get queues)
+        on_pick=(fun q ->
+                    S.batch (fun () ->
+                        S.set set_queue q;
+                        (* A kind the new queue has none of is let go. *)
+                        match S.get kind with
+                        | Some k
+                          when not
+                                 (Array.exists (String.equal k)
+                                    (kinds_in ~queue:q (S.get kinds))) ->
+                            S.set set_kind None
+                        | Some _ | None -> ());
+                    restart ())
+      />
+      <Picker
+        label="Kind"
+        chosen=(S.get kind)
+        values=(kinds_in ~queue:(S.get queue) (S.get kinds))
+        on_pick=(fun k ->
+                  S.set set_kind k;
+                  restart ())
+      />
+      <Show.Some some=(S.get minute)>
+        (fun m ->
+          <span class_="flex items-center gap-2 text-sm">
+            (Jsx.string ("Finished at " ^ clock_of (S.get m)))
+            <Toggle_button_group
+              size=`sm
+              aria_label="How its attempts ended"
+              selection_mode=`single
+              disallow_empty_selection=true
+              selected_keys=[| ended_key (S.get ended) |]
+              on_selection_change=(fun keys ->
+                                    match keys with
+                                    | [| key |] ->
+                                        Option.iter (S.set set_ended)
+                                          (ended_of_key key)
+                                    | _ -> ())>
+              <Toggle_button id="either">"All"</Toggle_button>
+              <Toggle_button id="done">"Done"</Toggle_button>
+              <Toggle_button id="failed">"Failed"</Toggle_button>
+            </Toggle_button_group>
+            <Button
+              variant=`ghost
+              size=`sm
+              is_icon_only=true
+              aria_label="Show every job"
+              on_click=(fun _ -> on_clear_minute ())>
+              <Gravity.Xmark class_="size-4" />
+            </Button>
+          </span>)
+      </Show.Some>
+      <Show when_=(some_selected ())>
+        <span class_="ms-2 text-sm text-muted">
+          (Jsx.string
+             (string_of_int (Array.length (S.get selected)) ^ " selected"))
+        </span>
+      </Show>
+      <div class_="ms-auto flex items-center gap-2">
+        <Show when_=(may Retry)>
+          <Button
+            variant=`secondary
+            size=`sm
+            is_disabled=(not (some_selected ()))
+            on_click=(fun _ ->
+                       act ~verb:"retried" (fun body ->
+                           Api.post_api_jobs_retry ~origin:(Page.origin ())
+                             ~body ()))>
+            <Gravity.Arrow_rotate_right class_="size-4" /> "Retry"
+          </Button>
+        </Show>
+        <Show when_=(may Cancel)>
+          <Button
+            variant=`secondary
+            size=`sm
+            is_disabled=(not (some_selected ()))
+            on_click=(fun _ ->
+                       act ~verb:"cancelled" (fun body ->
+                           Api.post_api_jobs_cancel ~origin:(Page.origin ())
+                             ~body ()))>
+            <Gravity.Circle_xmark class_="size-4" /> "Cancel"
+          </Button>
+        </Show>
+        <Show when_=(may Delete)>
+          <Button
+            variant=`danger_soft
+            size=`sm
+            is_disabled=(not (some_selected ()))
+            on_click=(fun _ ->
+                       act ~verb:"deleted" (fun body ->
+                           Api.post_api_jobs_delete ~origin:(Page.origin ())
+                             ~body ()))>
+            <Gravity.Trash_bin class_="size-4" /> "Delete"
+          </Button>
+        </Show>
+      </div>
+    </div>
+    <Card class_="min-h-0 flex-1 overflow-hidden p-0">
+      <Table variant=`secondary class_="h-full">
+        <Table.Scroll_container class_="h-full overflow-auto">
+          <Table.Content
+            aria_label="Jobs"
+            class_="min-w-[720px] table-fixed"
+            selection_mode=(if selectable () then `multiple else `none)
+            selected_keys=(S.get selected)
+            on_selection_change=(S.set set_selected)
+            on_row_action=on_open>
+            <Table.Header class_="sticky top-0 z-10">
+              <Table.Column class_="w-10 pe-0">
+                <Checkbox aria_label="Select every job shown" slot=`selection>
+                  <Checkbox.Content>
+                    <Checkbox.Control><Checkbox.Indicator /></Checkbox.Control>
+                  </Checkbox.Content>
+                </Checkbox>
+              </Table.Column>
+              <Table.Column is_row_header=true class_="w-[24%]">
+                "Job"
+              </Table.Column>
+              <Table.Column class_="w-[18%]">"State"</Table.Column>
+              <Table.Column class_="w-[9%]">"Attempt"</Table.Column>
+              <Table.Column class_="w-[11%]">"Queued"</Table.Column>
+              <Table.Column>"Error"</Table.Column>
+            </Table.Header>
+            <Table.Body>
+              <For each=(shown ())>
+                (fun (j : Api.job) _ ->
+                  <Table.Row id=j.id class_="cursor-pointer">
+                    <Table.Cell class_="pe-0">
+                      <Checkbox
+                        aria_label=("Select job " ^ j.id)
+                        slot=`selection
+                        variant=`secondary>
+                        <Checkbox.Content>
+                          <Checkbox.Control>
+                            <Checkbox.Indicator />
+                          </Checkbox.Control>
+                        </Checkbox.Content>
+                      </Checkbox>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div class_="flex flex-col">
+                        <span class_="font-medium">(Jsx.string j.kind)</span>
+                        <span class_="text-xs text-muted">
+                          (Jsx.string ("#" ^ j.id ^ {js| · |js} ^ j.queue))
+                        </span>
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      (match j.in_minute with
+                      | None ->
+                          <Chip
+                            size=`sm
+                            variant=`soft
+                            color=(Page.state_colour j.state)>
+                            <Chip.Label>
+                              (Jsx.string (Page.state_label j.state))
+                            </Chip.Label>
+                          </Chip>
+                      | Some m ->
+                          (* Listed by a minute: what its attempt came to
+                             then, and below it what the job is now. *)
+                          <div class_="flex flex-col items-start gap-0.5">
+                            <Chip
+                              size=`sm variant=`soft color=(moment_colour m)>
+                              <Chip.Label>
+                                (Jsx.string (moment_label m))
+                              </Chip.Label>
+                            </Chip>
+                            <Show when_=(moment_changed m j.state)>
+                              <span class_="text-xs text-muted">
+                                (Jsx.string
+                                   ("now "
+                                   ^ String.lowercase_ascii
+                                       (Page.state_label j.state)))
+                              </span>
+                            </Show>
+                          </div>)
+                    </Table.Cell>
+                    <Table.Cell class_="tabular-nums text-muted">
+                      (Jsx.string
+                         (Page.count j.attempt ^ " / "
+                        ^ Page.count j.max_attempts))
+                    </Table.Cell>
+                    <Table.Cell class_="whitespace-nowrap text-muted">
+                      (Jsx.string (Page.ago ~now:(S.get now) j.inserted_at))
+                    </Table.Cell>
+                    <Table.Cell class_="truncate text-muted">
+                      (Jsx.string
+                         (match j.in_minute with
+                         | Some m -> Option.value m.reason ~default:""
+                         | None -> Option.value j.last_error ~default:""))
+                    </Table.Cell>
+                  </Table.Row>)
+              </For>
+            </Table.Body>
+          </Table.Content>
+        </Table.Scroll_container>
+      </Table>
+    </Card>
+    <Show when_=(Array.length (shown ()) = 0)>
+      <Empty_state class_="py-6 text-center text-sm">
+        "No job here."
+      </Empty_state>
+    </Show>
+    <div class_="flex items-center justify-end gap-2">
+      <Button
+        variant=`tertiary
+        size=`sm
+        is_disabled=(match S.get passed with [] -> true | _ :: _ -> false)
+        on_click=(fun _ -> previous ())>
+        <Gravity.Chevron_left class_="size-4" /> "Newer"
+      </Button>
+      <Button
+        variant=`tertiary
+        size=`sm
+        is_disabled=(Array.length (shown ()) < page_size)
+        on_click=(fun _ -> next ())>
+        "Older" <Gravity.Chevron_right class_="size-4" />
+      </Button>
+    </div>
+  </div>

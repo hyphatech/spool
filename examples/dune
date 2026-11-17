@@ -5,6 +5,7 @@
 
 (executables
  (names quick_start verify kinds enqueueing runner operating testing)
+ (modules :standard \ dashboard spindle)
  (libraries
   spool
   rowtype
@@ -16,6 +17,44 @@
   ptime.clock.os
   mtime
   alcotest))
+
+; The dashboard's example, a Spindle server of its own.
+
+(executable
+ (name dashboard)
+ (modules dashboard)
+ (libraries
+  spool
+  spool-dashboard
+  spindle
+  spindle-postgres
+  rowtype
+  rowtype-postgres
+  wiretype
+  eio
+  eio_main
+  ptime
+  ptime.clock.os
+  mtime))
+
+; spool in a Spindle application: a route that owes a job, and a runner
+; beside the server.
+
+(executable
+ (name spindle)
+ (modules spindle)
+ (libraries
+  spool
+  spindle
+  spindle-postgres
+  rowtype
+  rowtype-postgres
+  wiretype
+  eio
+  eio_main
+  ptime
+  ptime.clock.os
+  mtime))
 
 ; @all builds only the modules a program links, and a piece no program links
 ; would be skipped, so @all asks for this directory's @check, which compiles

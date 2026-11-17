@@ -14,6 +14,13 @@ retries with backoff, retries after what an upstream said, or discards; a
 unique key folds a second request into the job already waiting; and a test
 runs every job due at its own clock, never sleeping.
 
+A queue's limits hold across every runner -- how many run at once, how many
+begin in a period, for each customer apart -- and a queue is paused from the
+table. A schedule enqueues a job each tick of a cron expression in a named
+time zone, once however many runners hold it; a job may wait for others and
+run once they have all completed; and `spool-dashboard` watches and steers it
+all from a page of your own Spindle server.
+
 <Code code={receipt} lang="ocaml" title="receipt.ml" />
 
 ## Install
@@ -30,7 +37,13 @@ opam install spool rowtype-migrate
 [rowtype](https://hyphatech.github.io/rowtype/) and its Postgres backend,
 `rowtype-postgres`, and [wiretype](https://hyphatech.github.io/wiretype/),
 which describes a job's payload. `rowtype-migrate` is the command that makes
-spool's table, beside your own.
+spool's table, beside your own. The dashboard is a package of its own,
+`spool-dashboard`, for an application served by
+[Spindle](https://hyphatech.github.io/spindle/):
+
+```sh
+opam install spool-dashboard
+```
 
 A program names the libraries it uses in its `dune` file:
 
@@ -38,4 +51,5 @@ A program names the libraries it uses in its `dune` file:
 (libraries spool rowtype-postgres eio_main)
 ```
 
-The [quick start](/spool/quick-start/) runs a whole program, next.
+The [quick start](/spool/quick-start/) runs a whole program, next, and [In a
+Spindle application](/spool/guide/spindle/) puts spool in a web server.

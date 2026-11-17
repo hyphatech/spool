@@ -1,0 +1,120 @@
+---
+title: The dashboard
+---
+
+import { Code } from "@astrojs/starlight/components";
+import dashboard from "@examples/dashboard.ml?raw";
+
+`spool-dashboard` watches and steers the queue from the application that
+runs it: routes added to its own Spindle server, open to whom it says and
+for what.
+
+```sh
+opam install spool-dashboard
+```
+
+```ocaml
+let db : Spindle_postgres.Pool.t Spindle.Dep.t =
+  Spindle.Dep.of_resource "database"
+
+let operator = Spindle.Access.principal ~id:Auth.user_id Auth.signed_in
+
+let may (user : Auth.user) (action : Spool_dashboard.action) :
+    Spindle.Access.decision =
+  match (user.role, action) with
+  | (Support | Admin), View | Admin, _ -> Allow
+  | Support, _ -> Deny "support only looks"
+  | Customer, _ -> Deny "not an operator"
+
+let routes =
+  Routes.routes
+  @ Spool_dashboard.routes ~operator ~may ~pool:db ~mono_clock ()
+```
+
+The page at `/spool` shows, live, a column of the queue's state beside its
+work. The column:
+
+- **States**: what waits, is blocked and runs, exactly; what completed and
+  was discarded in the last 24 hours, summed from spool's statistics; and
+  cancelled, which nothing counts without reading every finished row. A
+  state chosen there filters the job list.
+- **Queues**, each with a switch that pauses and resumes it, the limits it
+  holds, and a form that sets them: how many of its jobs run at once and how
+  many attempts begin in a period, across every runner, and whether each
+  holds for every partition of it.
+- **Schedules**, each with its expression and zone, its next tick, and a
+  button that runs it now.
+- **Workers**, each runner running: its host, its queues and their slots,
+  and when it was last seen.
+
+Beside it, **a chart** of the attempts finished each minute over the last
+hour, completed, retried and discarded; and **the jobs**,
+newest first, by state, queue and kind, a page at a time, a selection of
+them retried, cancelled or deleted at once. A job opened shows its attempts
+and why each failed, oldest first, its payload, and, where it is in a
+workflow, the jobs it waits for and those waiting on it, each with its state
+and opened from there.
+
+Live updates can be paused from the page. It wears Hypha's look, light or
+dark as the system is or as chosen.
+
+## Who may do what
+
+The application says, and there is no default, since the dashboard cancels
+and deletes and an open default is how it ends up public. It gives two
+things, through Spindle's `Access`:
+
+- **`operator`**: who calls, as the application knows them -- its own user,
+  read from its session or a bearer token. Nobody signed in is a `401`.
+- **`may`**: what they may do, a function of that user and a
+  `Spool_dashboard.action` -- `View`, `Cancel`, `Retry`, `Delete`,
+  `Run_again`, `Pause`, `Resume`, `Set_limits` and `Run_schedule` --
+  answering `Allow` or `Deny` with a reason. It reads what the application
+  keeps, a role, a flag or a scope, so a user given or refused access is a
+  change to their row, not to the code.
+
+Every route asks before it reads or does anything, and answers a denial
+with a `403` and nothing more; Spindle writes each denial on its
+`spindle.access` source, naming the caller and the reason, and
+`Spindle.Access.unguarded` lists none of the dashboard's routes. The page
+shows only what its viewer may do: a viewer allowed `View` alone sees the
+queue and changes nothing.
+
+The live stream is one request, asked once, so it ends after `?stream_for`,
+a minute unless given, and the page opens the next at once, which asks
+again: someone whose access the application took away sees the queue no
+longer than that.
+
+## What it does
+
+Whatever the dashboard does, it does through spool's own functions:
+`Spool.jobs`, `Spool.find` and `Spool.workflow` to read, `Spool.cancel`,
+`Spool.retry` and `Spool.delete` for a job or a selection, `Spool.Queue.pause`,
+`resume` and `set_limits`, and `Schedule.run_now`. It can do nothing code
+cannot, under the same checks. Each action is a line on the
+`spool-dashboard` source, at `Info`, saying what it was done to; the line
+carries its request's id, and the request's trace who made it. A kind made `~sensitive` shows "Hidden: its kind is sensitive"
+where its payload would be, since spool answers none.
+
+The live state is one stream of Server-Sent Events, `GET /spool/api/live`.
+Once a second, while anyone watches, one fiber of the process reads the
+counts, the queues, the runners, the schedules and the latest statistics,
+and every viewer is sent each part that changed. `mono_clock` times it.
+
+## Installed with OCaml alone
+
+The page is built into the package: its files are compiled into the library
+and served from memory, the hashed ones kept a year by the browser and the
+page asked for again each time. Nothing is built, fetched or reached where
+it runs. It calls its routes relative to where it is served, so it works
+under `~at` anywhere, and behind any prefix a proxy puts it.
+
+## An example
+
+Two runners, a schedule every minute, a queue limited to one job at a time
+per customer, an import whose summary waits for its rows, a kind whose
+payload is a secret, and a stream of work that sometimes fails. Spool's
+tables are made first, by `rowtype-migrate up --source spool`; then
+`dune exec examples/dashboard.exe` prints the dashboard's address.
+
+<Code code={dashboard} lang="ocaml" title="dashboard.ml" />

@@ -5,7 +5,8 @@ title: Operating a queue
 import { Code } from "@astrojs/starlight/components";
 import operating from "@examples/operating.ml?raw";
 
-`find`, `counts`, `cancel` and `retry` are an operator's hand. Each runs on
+`find`, `jobs`, `counts`, `cancel`, `retry`, `delete` and `run_again` are an
+operator's hand, with a queue's pause and the list of runners. Each runs on
 a connection of the caller's, as `enqueue` does, and takes a job by the
 `Spool.Id.t` that `enqueue`, `retry` or `Runner.drain` answered. This
 program enqueues a job, cancels it, retries it, finds it, and prints every
@@ -17,9 +18,10 @@ queue's counts:
 
 `Spool.counts` answers how many jobs each queue holds in each state.
 
-A `Spool.state` is one of five: `Available` (waiting, or scheduled, or to
-be retried), `Running`, `Completed`, `Discarded` (failed on its last
-attempt, expired, or given up) and `Cancelled`.
+A `Spool.state` is one of six: `Available` (waiting, or scheduled, or to
+be retried), `Blocked` (waiting for jobs it was enqueued after), `Running`,
+`Completed`, `Discarded` (failed on its last attempt, expired, or given up)
+and `Cancelled`.
 
 ## Finding a job
 
@@ -35,6 +37,15 @@ above reads one:
 | `scheduled_at` | When it may run next |
 | `inserted_at`, `finished_at` | When it was written, and finished |
 | `errors` | Each failed attempt: which, when, and why, in the handler's words, oldest first |
+| `payload` | Its JSON, or `None` for a kind made `~sensitive` |
+
+## Listing jobs
+
+`Spool.jobs conn ~limit` answers jobs newest first, of a `~state`, a
+`~queue` and a `~kind` where given; the next page is `~before` the last
+one's id. `Spool.counts ~finished:false` counts only what waits, is blocked
+and runs, from their indexes, without reading the finished rows retention
+keeps: what a page that asks every second reads.
 
 ## Cancelling and retrying
 
@@ -47,3 +58,49 @@ kept, unless a job of its kind already waits under its key, which is then
 the answer, and the retried row stays as it was, so one key never runs
 twice. `retry` takes a discarded or cancelled job, and answers `None` for
 any other, as `cancel` and `retry` above show.
+
+## Deleting a job
+
+`Spool.delete` removes a job's row, whatever its state but running, and
+answers `false` for a running job or one there is not. A job deleted before
+it completed cancels what waits on it, as a cancel does. Cancel a running job
+first; once it has stopped, it can be deleted.
+
+## Running a job again
+
+`Spool.run_again conn ~now id` enqueues a new job, a copy of this one -- its
+kind, queue, payload and settings -- from its first attempt, whatever this
+one's state, and answers the copy's id. Its work is done again, as an
+operator asks, so it has no unique key and waits for nothing. `retry` is for
+a job that failed for good or was cancelled; `run_again` is for any, a
+completed one among them.
+
+## Pausing a queue
+
+A queue's pause is kept in the table, not in any runner, so every runner
+obeys it -- one started after it among them -- until it is resumed:
+
+```ocaml
+Spool.Queue.pause conn ~now "mail"     (* no runner claims from it *)
+Spool.Queue.resume conn ~now "mail"    (* claimed from again, at once *)
+```
+
+What runs when a queue is paused runs to its end. `Spool.Queue.list` answers
+every queue a runner has named, each with whether it is paused and its
+limits ([Limiting a queue](/spool/guide/limiting/)).
+
+## Runners
+
+`Spool.Runner.list` answers the runners running: each one's host, process,
+the queues it runs with how many jobs of each at once, when it started and
+its last heartbeat. A runner writes its row at every heartbeat and deletes
+it when it stops; one a lease late is deleted by another, so a runner killed
+leaves the list within a lease.
+
+## What attempts came to
+
+`Spool.Stats.since conn instant` answers, a row a second, queue, kind and
+outcome -- `Completed`, `Retried` or `Discarded` -- how many attempts
+finished, how long they ran and how long they waited past their scheduled
+instant, together. A runner counts each attempt in the transaction that
+records it, and prunes the rows as it prunes completed jobs.

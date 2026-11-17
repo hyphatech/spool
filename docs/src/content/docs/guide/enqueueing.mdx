@@ -53,3 +53,31 @@ The job's `Spool.Id.t`, or why it was not written, as `explain` in
 
 An id is a job's handle, for `find`, `cancel` and `retry`: a counter, so
 never put where a stranger could read it.
+
+## Once for a period
+
+`~unique_for` holds a key for a period from the enqueue, whatever its job's
+state: an enqueue of the kind and key within it is answered with that job,
+waiting, running or already finished.
+
+```ocaml
+Spool.enqueue conn ~now ~unique:customer ~unique_for:Mtime.Span.hour digest d
+```
+
+The row is kept until the period ends -- pruning waits for it, and a kind
+that keeps nothing keeps the row and not its payload. Without `~unique`, the
+period holds for the kind: at most one job of it enqueued in any such
+period.
+
+## Many at once
+
+`Spool.enqueue_many` writes many jobs of one kind in one statement, in the
+caller's transaction:
+
+```ocaml
+Spool.enqueue_many conn ~now import_row rows
+```
+
+`~unique` gives each payload's key, and the first payload of a key stands for
+the rest. It answers every job's id, each once and in no order -- what a job
+that waits for all of them is given.

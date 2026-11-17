@@ -1,0 +1,21 @@
+; The page: Solid through solidtype, in HeroUI's look, its chart rhp's.
+
+(library
+ (name dashboard_web)
+ (modes melange)
+ (libraries
+  solidtype
+  solidtype-heroui
+  solidtype-rhp
+  solidtype-gravity-icons
+  melange.dom)
+ (preprocess
+  (pps melange.ppx ppx_solidtype)))
+
+; The page's client, printed from the dashboard's routes as the build
+; runs, never kept: the routes are the one place it is written.
+
+(rule
+ (with-stdout-to
+  api.ml
+  (run %{exe:../printer/client.exe})))

@@ -14,6 +14,25 @@ program starts, started, and stopped as the program ends:
 Nothing runs until `Runner.start`, which forks a fiber per queue, the
 heartbeat and the listener on the switch it was made with.
 
+## Where it runs
+
+A runner is fibers in whichever program makes it; spool is a library, and
+there is no spool process to start. Runners meet only in the table, so the
+same handlers can run beside the application's server or in a program of
+their own:
+
+- **Beside the server**, as above: one process to deploy, and the jobs share
+  its machine and its restarts.
+- **In a program of its own**: a `main` that makes the runner, starts it,
+  and stops it on the signal that ends the program, with no server at all.
+  The jobs then have their own machines, scaled and restarted apart from
+  the requests', and the application's server makes no runner and only
+  enqueues, which needs none.
+
+Either way, more runners are more processes pointed at one database: each
+claims under its own lease, and a queue's pause and limits, kept in the
+table, hold across all of them.
+
 ## How it runs a job
 
 | What | How |

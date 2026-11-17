@@ -19,6 +19,7 @@ Transactional, reliable and testable. Eio-native and multicore-ready.
 - **Asked twice, one job**: a unique key folds a second request into the job already waiting.
 - **Scheduled and prioritised**: at an instant, after a span, until an expiry, at a priority from 0 to 9.
 - **Tests that never sleep**: `Runner.drain` runs every job due at the test's own clock.
+- **A live dashboard**: `spool-dashboard`, routes of your own Spindle server, open to whom you say and for what, to watch the queue, cancel, retry or delete a job or a selection, pause a queue and set its limits.
 
 ## Install
 

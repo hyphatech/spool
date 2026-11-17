@@ -1,0 +1,118 @@
+module Button = Solidtype_heroui.Button
+module Description = Solidtype_heroui.Description
+module Gravity = Solidtype_gravity_icons
+module Jsx = Solidtype.Jsx
+module Label = Solidtype_heroui.Label
+module Number_field = Solidtype_heroui.Number_field
+module Popover = Solidtype_heroui.Popover
+module S = Solidtype.Solid
+module Switch = Solidtype_heroui.Switch
+module Toast = Solidtype_heroui.Toast
+
+(* A queue's limits, set from beside it: how many run at once and how many
+   begin in a period, across every runner, and whether each holds for every
+   partition. A field left empty is no limit. *)
+
+(* An emptied number field holds NaN. *)
+let given n = if Js.Float.isNaN n then None else Some n
+
+let rate ~attempts ~per_s : (Api.rate option, string) result =
+  match (given attempts, given per_s) with
+  | None, None -> Ok None
+  | Some attempts, Some per_s ->
+      Ok (Some { attempts; per_ms = Float.round (per_s *. 1000.) })
+  | Some _, None | None, Some _ ->
+      Error "A rate is a number of attempts and a period, both or neither."
+
+let field ~label ~description ~min ~step value set =
+  <Number_field
+    class_="min-w-0 flex-1"
+    value=(S.get value)
+    on_change=(S.set set)
+    min_value=min
+    step>
+    <Label>(Jsx.string label)</Label>
+    <Number_field.Group>
+      <Number_field.Decrement_button />
+      <Number_field.Input placeholder="none" />
+      <Number_field.Increment_button />
+    </Number_field.Group>
+    <Description>(Jsx.string description)</Description>
+  </Number_field>
+
+let%component make ~(queue : Api.queue) () =
+  let opened, set_opened = S.create_signal false in
+  let running, set_running = S.create_signal nan in
+  let attempts, set_attempts = S.create_signal nan in
+  let per_s, set_per_s = S.create_signal nan in
+  let per_partition, set_per_partition = S.create_signal false in
+  (* The fields start from the queue as it is when the form opens. *)
+  let load () =
+    let (q : Api.queue) = S.get queue in
+    S.batch (fun () ->
+        S.set set_running (Option.value q.limit ~default:nan);
+        S.set set_attempts
+          (match q.rate with Some r -> r.attempts | None -> nan);
+        S.set set_per_s
+          (match q.rate with Some r -> r.per_ms /. 1000. | None -> nan);
+        S.set set_per_partition q.per_partition)
+  in
+  let save () =
+    let name = (S.get queue).name in
+    match rate ~attempts:(S.get attempts) ~per_s:(S.get per_s) with
+    | Error why ->
+        ignore (Toast.danger ~description:why "Not saved" : Toast.key)
+    | Ok rate ->
+        Page.settle
+          (Api.post_api_queues_queue_limits ~origin:(Page.origin ()) ~queue:name
+             ~body:
+               ({
+                  running = given (S.get running);
+                  rate;
+                  per_partition = S.get per_partition;
+                }
+                 : Api.limits_input)
+             ())
+          ~ok:(fun () ->
+            S.set set_opened false;
+            ignore (Toast.success (name ^ "'s limits are set") : Toast.key))
+  in
+  <Popover
+    is_open=(S.get opened)
+    on_open_change=(fun open_ ->
+                     if open_ then load ();
+                     S.set set_opened open_)>
+    <Button
+      variant=`ghost
+      size=`sm
+      is_icon_only=true
+      class_="size-7 min-w-7"
+      aria_label=("Limits of " ^ (S.get queue).name)>
+      <Gravity.Gear class_="size-3.5" />
+    </Button>
+    <Popover.Content placement=`right class_="w-80">
+      <Popover.Dialog class_="flex flex-col gap-4">
+        <Popover.Heading class_="font-semibold">
+          (Jsx.string ("Limits of " ^ (S.get queue).name))
+        </Popover.Heading>
+        (field ~label:"At once" ~description:"Across every runner." ~min:1.
+           ~step:1. running set_running)
+        <div class_="flex gap-2">
+          (field ~label:"Attempts" ~description:"Begun at most..." ~min:1.
+             ~step:1. attempts set_attempts)
+          (field ~label:"Per seconds" ~description:"...in any period this long."
+             ~min:0.001 ~step:1. per_s set_per_s)
+        </div>
+        <Switch
+          size=`sm
+          is_selected=(S.get per_partition)
+          on_change=(S.set set_per_partition)>
+          <Switch.Content>
+            <Switch.Control><Switch.Thumb /></Switch.Control>
+            <Label>"Each partition apart"</Label>
+          </Switch.Content>
+        </Switch>
+        <Button size=`sm on_click=(fun _ -> save ())>"Save"</Button>
+      </Popover.Dialog>
+    </Popover.Content>
+  </Popover>

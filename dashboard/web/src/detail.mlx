@@ -1,0 +1,358 @@
+module Button = Solidtype_heroui.Button
+module Card = Solidtype_heroui.Card
+module Chip = Solidtype_heroui.Chip
+module Gravity = Solidtype_gravity_icons
+module Drawer = Solidtype_heroui.Drawer
+module For = Solidtype.For
+module Jsx = Solidtype.Jsx
+module List_box = Solidtype_heroui.List_box
+module S = Solidtype.Solid
+module Show = Solidtype.Show
+module Spinner = Solidtype_heroui.Spinner
+module Toast = Solidtype_heroui.Toast
+
+(* One job, fetched when it is opened: its state, its attempts and why each
+   failed, oldest first, its payload, and the jobs it waits for and that
+   wait on it, each opened from here. *)
+
+let fetch id _ =
+  Js.Promise.then_
+    (fun answered ->
+      Js.Promise.resolve
+        (match answered with
+        | Ok detail -> Some detail
+        | Error e ->
+            ignore
+              (Toast.danger ~description:(Page.said e) "Could not open the job"
+                : Toast.key);
+            None))
+    (Api.get_api_jobs_id ~origin:(Page.origin ()) ~id ())
+
+let fact label value =
+  <div class_="flex flex-col gap-0.5">
+    <dt class_="text-xs text-muted">(Jsx.string label)</dt>
+    <dd class_="text-sm">(Jsx.string value)</dd>
+  </div>
+
+let payload (p : Api.payload) =
+  match p with
+  | Shown { value } ->
+      <Card variant=`secondary class_="p-0">
+        <pre class_="max-h-80 overflow-auto p-3 font-mono text-xs leading-5">
+          (Jsx.string (Page.json value))
+        </pre>
+      </Card>
+  | Hidden ->
+      <Card variant=`secondary class_="p-3 text-sm text-muted">
+        "Hidden: its kind is sensitive."
+      </Card>
+
+(* The jobs at the other end of its edges, one way or the other: a job no
+   longer kept is its id alone. *)
+type linked = { id : string; job : Api.job option }
+
+let linked (d : Api.detail) ~(waits : bool) =
+  let me = d.job.id in
+  Array.to_list d.edges
+  |> List.filter_map (fun (e : Api.edge) ->
+      let mine, other =
+        if waits then (e.job, e.waits_for) else (e.waits_for, e.job)
+      in
+      if String.equal mine me then
+        Some
+          {
+            id = other;
+            job =
+              Array.find_opt
+                (fun (j : Api.job) -> String.equal j.id other)
+                d.workflow;
+          }
+      else None)
+  |> Array.of_list
+
+let section ~title ~(on_open : string -> unit) (jobs : linked array) =
+  <Show when_=(Array.length jobs > 0)>
+    <section class_="flex flex-col gap-2">
+      <h3 class_="t-label text-muted">(Jsx.string title)</h3>
+      <List_box aria_label=title selection_mode=`none on_action=on_open>
+        <For each=jobs>
+          (fun (l : linked) _ ->
+            <List_box.Item id=l.id text_value=("#" ^ l.id)>
+              <span class_="w-14 text-xs tabular-nums text-muted">
+                (Jsx.string ("#" ^ l.id))
+              </span>
+              (match l.job with
+              | Some (j : Api.job) ->
+                  <span class_="contents">
+                    <span class_="min-w-0 flex-1 truncate text-sm">
+                      (Jsx.string j.kind)
+                    </span>
+                    <Chip
+                      size=`sm variant=`soft color=(Page.state_colour j.state)>
+                      <Chip.Label>
+                        (Jsx.string (Page.state_label j.state))
+                      </Chip.Label>
+                    </Chip>
+                  </span>
+              | None ->
+                  <span class_="flex-1 text-sm text-muted">
+                    "No longer kept"
+                  </span>)
+            </List_box.Item>)
+        </For>
+      </List_box>
+    </section>
+  </Show>
+
+(* A job's attempts in order, each with what it came to: its failures as
+   recorded, the one that discarded it named so, and its last as its state
+   says -- completed, running, cancelled, or the next one to come. *)
+type attempt = {
+  label : string;
+  outcome : string;
+  colour : [ `accent | `danger | `default | `success | `warning ];
+  at : string;
+  reason : string option;
+}
+
+let attempts (d : Api.detail) =
+  let j = d.job in
+  let n = Array.length d.errors in
+  let failed =
+    Array.mapi
+      (fun i (f : Api.failed) ->
+        let discarded =
+          i = n - 1
+          &&
+          match j.state with
+          | Discarded -> true
+          | Available | Blocked | Running | Completed | Cancelled -> false
+        in
+        {
+          label = "Attempt " ^ Page.count f.attempt;
+          outcome = (if discarded then "Discarded" else "Failed");
+          colour = (if discarded then `danger else `warning);
+          at = Page.instant f.at;
+          reason = Some f.reason;
+        })
+      d.errors
+  in
+  let at = function Some t -> Page.instant t | None -> "" in
+  let last =
+    match j.state with
+    | Completed ->
+        [|
+          {
+            label = "Attempt " ^ Page.count j.attempt;
+            outcome = "Completed";
+            colour = `success;
+            at = at j.finished_at;
+            reason = None;
+          };
+        |]
+    | Running ->
+        [|
+          {
+            label = "Attempt " ^ Page.count j.attempt;
+            outcome = "Running";
+            colour = `accent;
+            at = "";
+            reason = None;
+          };
+        |]
+    | Cancelled ->
+        [|
+          {
+            label = "Cancelled";
+            outcome = "Cancelled";
+            colour = `default;
+            at = at j.finished_at;
+            reason = None;
+          };
+        |]
+    | Available when j.attempt > 0. ->
+        [|
+          {
+            label = "Attempt " ^ Page.count (j.attempt +. 1.);
+            outcome = "Next";
+            colour = `default;
+            at = Page.instant j.scheduled_at;
+            reason = None;
+          };
+        |]
+    | Available | Blocked | Discarded -> [||]
+  in
+  Array.append failed last
+
+let%component make ~(id : string option) ~(on_close : unit -> unit)
+    ~(on_open : string -> unit) ~(may : Page.action -> bool) () =
+  let detail, fetching = S.create_resource_from (fun () -> S.get id) fetch in
+  (* What an operator may do with the job, one way on in each state: cancel
+     what has not finished, retry what failed for good or was cancelled, run
+     a completed job again as a copy, which opens it, and delete what is not
+     running; each only where the viewer may. *)
+  let ids (j : Api.job) : Api.selection = { ids = [| j.id |] } in
+  let applied ~done_ ~left call =
+    Page.settle call ~ok:(fun (o : Api.outcome) ->
+        ignore
+          (Toast.success (if Array.length o.applied > 0 then done_ else left)
+            : Toast.key);
+        S.refetch fetching)
+  in
+  let buttons (j : Api.job) =
+    let can_retry, can_cancel, can_delete, can_run_again =
+      match j.state with
+      | Discarded | Cancelled -> (true, false, true, false)
+      | Available | Blocked -> (false, true, true, false)
+      | Running -> (false, true, false, false)
+      | Completed -> (false, false, true, true)
+    in
+    let can_retry = can_retry && may Retry
+    and can_cancel = can_cancel && may Cancel
+    and can_delete = can_delete && may Delete
+    and can_run_again = can_run_again && may Run_again in
+    <div class_="flex flex-wrap gap-2">
+      <Show when_=can_retry>
+        <Button
+          size=`sm
+          on_click=(fun _ ->
+                     applied ~done_:"Retried"
+                       ~left:"Not retried: it waits already"
+                       (Api.post_api_jobs_retry ~origin:(Page.origin ())
+                          ~body:(ids j) ()))>
+          <Gravity.Arrow_rotate_right class_="size-4" /> "Retry"
+        </Button>
+      </Show>
+      <Show when_=can_run_again>
+        <Button
+          size=`sm
+          on_click=(fun _ ->
+                     Page.settle
+                       (Api.post_api_jobs_id_again ~origin:(Page.origin ())
+                          ~id:j.id ())
+                       ~ok:(fun (e : Api.enqueued) ->
+                         ignore
+                           (Toast.success ("Running again as #" ^ e.id)
+                             : Toast.key);
+                         on_open e.id))>
+          <Gravity.Play class_="size-4" /> "Run again"
+        </Button>
+      </Show>
+      <Show when_=can_cancel>
+        <Button
+          size=`sm
+          variant=`secondary
+          on_click=(fun _ ->
+                     applied ~done_:"Cancelled"
+                       ~left:"Not cancelled: it had finished"
+                       (Api.post_api_jobs_cancel ~origin:(Page.origin ())
+                          ~body:(ids j) ()))>
+          <Gravity.Circle_xmark class_="size-4" /> "Cancel"
+        </Button>
+      </Show>
+      <Show when_=can_delete>
+        <Button
+          size=`sm
+          variant=`danger_soft
+          on_click=(fun _ ->
+                     Page.settle
+                       (Api.post_api_jobs_delete ~origin:(Page.origin ())
+                          ~body:(ids j) ())
+                       ~ok:(fun (o : Api.outcome) ->
+                         if Array.length o.applied > 0 then begin
+                           ignore (Toast.success "Deleted" : Toast.key);
+                           on_close ()
+                         end
+                         else
+                           ignore
+                             (Toast.danger "Not deleted: it is running"
+                               : Toast.key)))>
+          <Gravity.Trash_bin class_="size-4" /> "Delete"
+        </Button>
+      </Show>
+    </div>
+  in
+  let opened () = Option.join (S.latest detail) in
+  <Drawer.Backdrop
+    is_open=(Option.is_some (S.get id))
+    on_open_change=(fun open_ -> if not open_ then on_close ())>
+    <Drawer.Content placement=`right>
+      <Drawer.Dialog class_="w-full sm:max-w-xl">
+        <Drawer.Close_trigger />
+        <Show.Some
+          some=(opened ())
+          fallback=(<div class_="flex flex-1 items-center justify-center p-10">
+                      <Spinner />
+                    </div>)>
+          (fun d ->
+            let j () : Api.job = (S.get d).job in
+            <div class_="flex min-h-0 flex-1 flex-col">
+              <Drawer.Header class_="flex-row items-center gap-3">
+                <Drawer.Heading class_="truncate font-semibold">
+                  (Jsx.string (j ()).kind)
+                </Drawer.Heading>
+                <Chip
+                  size=`sm variant=`soft color=(Page.state_colour (j ()).state)>
+                  <Chip.Label>
+                    (Jsx.string (Page.state_label (j ()).state))
+                  </Chip.Label>
+                </Chip>
+              </Drawer.Header>
+              <Drawer.Body class_="flex flex-col gap-6">
+                (buttons (j ()))
+                <dl class_="grid grid-cols-2 gap-4">
+                  (fact "Job" ("#" ^ (j ()).id))
+                  (fact "Queue" (j ()).queue)
+                  (fact "Attempt"
+                     (Page.count (j ()).attempt ^ " of "
+                     ^ Page.count (j ()).max_attempts))
+                  (fact "Priority" (Page.count (j ()).priority))
+                  (fact "Queued" (Page.instant (j ()).inserted_at))
+                  (fact "Scheduled" (Page.instant (j ()).scheduled_at))
+                  (fact "Finished"
+                     (match (j ()).finished_at with
+                     | Some t -> Page.instant t
+                     | None -> "Not yet"))
+                </dl>
+                <section class_="flex flex-col gap-2">
+                  <h3 class_="t-label text-muted">"Attempts"</h3>
+                  <For
+                    each=(attempts (S.get d))
+                    fallback=(<p class_="text-sm text-muted">
+                                "Not attempted yet."
+                              </p>)>
+                    (fun (a : attempt) _ ->
+                      <Card variant=`secondary class_="flex flex-col gap-1 p-3">
+                        <div
+                          class_="flex items-center gap-2 text-xs text-muted">
+                          <span class_="font-medium text-foreground">
+                            (Jsx.string a.label)
+                          </span>
+                          <Chip size=`sm variant=`soft color=a.colour>
+                            <Chip.Label>(Jsx.string a.outcome)</Chip.Label>
+                          </Chip>
+                          (Jsx.string a.at)
+                        </div>
+                        <Show.Some some=a.reason>
+                          (fun r ->
+                            <p class_="whitespace-pre-wrap break-words text-sm">
+                              (Jsx.string (S.get r))
+                            </p>)
+                        </Show.Some>
+                      </Card>)
+                  </For>
+                </section>
+                <section class_="flex flex-col gap-2">
+                  <h3 class_="t-label text-muted">"Payload"</h3>
+                  (payload (S.get d).payload)
+                </section>
+                (section ~title:"Waits for" ~on_open
+                   (linked (S.get d) ~waits:true))
+                (section ~title:"Waited on by" ~on_open
+                   (linked (S.get d) ~waits:false))
+              </Drawer.Body>
+            </div>)
+        </Show.Some>
+      </Drawer.Dialog>
+    </Drawer.Content>
+  </Drawer.Backdrop>

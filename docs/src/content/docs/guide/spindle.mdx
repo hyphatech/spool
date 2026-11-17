@@ -1,0 +1,62 @@
+---
+title: In a Spindle application
+---
+
+import { Code } from "@astrojs/starlight/components";
+import spindle from "@examples/spindle.ml?raw";
+
+spool is a library: in an application served by
+[Spindle](https://hyphatech.github.io/spindle/), a route owes a job in the
+transaction its request writes in, and a runner beside the server does the
+work. There is no spool process to start, and nothing of Spindle's to
+change.
+
+<Code code={spindle} lang="ocaml" title="spindle.ml" />
+
+## A job in the request's transaction
+
+A route reads the pool the application already holds as a resource, and
+`Spindle_postgres.Pool.transaction` runs its writes in one transaction:
+`Ok` commits, `Error` rolls back. `Spool.enqueue` takes the same
+connection, so the order and its receipt are written together, a refusal
+leaves neither, and the runner hears of the job when the transaction
+commits. A unique key, here the order's id, makes a request sent twice one
+job.
+
+What enqueueing can answer beside a statement's failure -- a payload its
+kind cannot write, a priority out of range -- is the program's bug, never
+the caller's, so it is an internal refusal, a `500`;
+`Spindle_postgres.refusal` words the rest, a pool busy as a `503`.
+
+## The runner beside the server
+
+A runner has its own connections, made from the same connection string --
+a small pool and a listener -- because one borrowed from the application's
+would lose its heartbeats when the application is busiest ([The
+runner](/spool/guide/runner/#its-own-connections)). It is started before
+the server listens, and stopped once `Spindle.serve` returns, which it does
+when the process is told to stop: running jobs get their grace, and what
+is left is put back for the next deploy's runner.
+
+A runner may instead run in a program of its own, with no server at all;
+the application then only enqueues, which needs none ([Where it
+runs](/spool/guide/runner/#where-it-runs)).
+
+## The dashboard
+
+`spool-dashboard` is routes the same server serves, beside the
+application's own, behind its own sign-in: [The
+dashboard](/spool/guide/dashboard/).
+
+```ocaml
+Spindle.serve env ~resources:[ Spindle.Dep.resource db pool ]
+  ([ take_order ]
+  @ Spool_dashboard.routes ~operator ~may ~pool:db ~mono_clock ())
+```
+
+## Kinds are one per name
+
+A kind's name is its identity in the table, and every runner on a database
+claims every job of a kind it handles. Two programs on one database that
+make a kind of one name with two payload shapes discard each other's jobs
+as unreadable: one name, one kind, wherever it is made.

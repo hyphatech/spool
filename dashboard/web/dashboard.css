@@ -1,0 +1,160 @@
+/* HeroUI's Tailwind build, as its README gives it: the prelude its
+   components need, then the components the dashboard uses, no others, in
+   HeroUI's own order, dressed in Hypha's theme, themes/hypha.css. Tailwind
+   reads the classes from the .mlx sources, where they are written whole. */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+
+@import "@heroui/styles/base/base.css" layer(base);
+@import "@heroui/styles/utilities";
+@import "@heroui/styles/variants";
+@import "@heroui/styles/themes/default" layer(theme);
+@import "./themes/hypha.css" layer(theme);
+
+@import "@heroui/styles/components/close-button.css" layer(components);
+@import "@heroui/styles/components/description.css" layer(components);
+@import "@heroui/styles/components/label.css" layer(components);
+@import "@heroui/styles/components/button.css" layer(components);
+@import "@heroui/styles/components/chip.css" layer(components);
+@import "@heroui/styles/components/empty-state.css" layer(components);
+@import "@heroui/styles/components/spinner.css" layer(components);
+@import "@heroui/styles/components/toast.css" layer(components);
+@import "@heroui/styles/components/separator.css" layer(components);
+@import "@heroui/styles/components/surface.css" layer(components);
+@import "@heroui/styles/components/checkbox.css" layer(components);
+@import "@heroui/styles/components/switch.css" layer(components);
+@import "@heroui/styles/components/table.css" layer(components);
+@import "@heroui/styles/components/popover.css" layer(components);
+@import "@heroui/styles/components/menu.css" layer(components);
+@import "@heroui/styles/components/menu-item.css" layer(components);
+@import "@heroui/styles/components/menu-section.css" layer(components);
+@import "@heroui/styles/components/dropdown.css" layer(components);
+@import "@heroui/styles/components/drawer.css" layer(components);
+@import "@heroui/styles/components/card.css" layer(components);
+@import "@heroui/styles/components/list-box.css" layer(components);
+@import "@heroui/styles/components/list-box-item.css" layer(components);
+@import "@heroui/styles/components/number-field.css" layer(components);
+@import "@heroui/styles/components/toggle-button.css" layer(components);
+@import "@heroui/styles/components/toggle-button-group.css" layer(components);
+@import "@heroui/styles/components/tooltip.css" layer(components);
+/* The segment the theme is chosen by: solidtype's own, in HeroUI's look. */
+@import "vite-plugin-solidtype/heroui-extras.css";
+
+/* Hypha's type, shipped in the bundle, since a customer's servers may reach
+   nothing: Inter Tight throughout. The Latin faces alone, in woff2, which every browser
+   that runs the page reads. */
+@font-face {
+  font-family: "Inter Tight";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@fontsource/inter-tight/files/inter-tight-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter Tight";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("@fontsource/inter-tight/files/inter-tight-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter Tight";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("@fontsource/inter-tight/files/inter-tight-latin-600-normal.woff2") format("woff2");
+}
+
+@theme {
+  --font-sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --tracking-label: 0.08em;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Hypha's two corners, as its design system's tokens give them: a control's
+   -- buttons, options, chips, toggles -- and a panel's. HeroUI writes each
+   part's corner as its own multiple of --radius, compiled in, which drew
+   buttons rounder than the panels around them; each part is given the
+   control's corner here, in HeroUI's layer, so the rules it scopes more
+   narrowly -- the inner edges of a joined group -- still win. A segment's
+   corner is the control's and its 2px of padding, so the pill inside it
+   nests. */
+@layer components {
+  .button,
+  .toggle-button,
+  .chip,
+  .list-box-item,
+  .menu-item,
+  .close-button,
+  .segment__item,
+  .segment__indicator,
+  .toggle-button-group--horizontal .toggle-button:first-child:last-child,
+  .toggle-button-group--detached .toggle-button {
+    border-radius: var(--hypha-radius-control);
+  }
+  .toggle-button-group--horizontal .toggle-button:first-child {
+    border-start-start-radius: var(--hypha-radius-control);
+    border-end-start-radius: var(--hypha-radius-control);
+  }
+  .toggle-button-group--horizontal .toggle-button:last-child {
+    border-start-end-radius: var(--hypha-radius-control);
+    border-end-end-radius: var(--hypha-radius-control);
+  }
+  .segment {
+    border-radius: calc(var(--hypha-radius-control) + 2px);
+  }
+  .popover,
+  .dropdown__popover {
+    border-radius: var(--hypha-radius-panel);
+  }
+}
+
+/* HeroUI's card, flat and outlined by a rule, as Hypha's panels are. */
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--hypha-radius-panel);
+  box-shadow: none;
+}
+
+/* A popover or a tooltip above the page, at HeroUI's overlay layer: React
+   Aria sets it on the element it positions, and solidtype does not, so
+   rhp's plot, a layer of its own, drew over them. Kobalte lifts the
+   positioner to its content's z-index. */
+.popover,
+.dropdown__popover,
+.tooltip {
+  z-index: var(--z-index-overlay);
+}
+
+/* A label over a group, as Hypha's t-label sets one. */
+@utility t-label {
+  font-weight: 500;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+@source "./src";
+
+/* A switch stays a pill under Hypha's small radius, which would make it a
+   box; and a table in a card has its header as a band, square, the card
+   being its frame. */
+.switch__control,
+.switch__thumb {
+  border-radius: 9999px;
+}
+.card .table__column {
+  border-radius: 0 !important;
+}
+

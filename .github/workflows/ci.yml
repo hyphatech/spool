@@ -21,7 +21,10 @@ jobs:
           opam-repositories: |
             open-opam: https://github.com/open-opam/opam-repository.git
             default: https://opam.ocaml.org
-      - run: opam install . --deps-only --with-test --with-dev-setup -y
+      # The Makefile's LOCAL: spool-dashboard takes spool at its own version.
+      - run: opam install . --deps-only --with-test --with-dev-setup -y --ignore-constraints-on=deps-of-spool
+      # make lint builds the dashboard's page again and compares it.
+      - uses: oven-sh/setup-bun@v2
       # Use setup-ocaml's switch instead of the Makefile's.
       - run: make lint OPAM="opam exec --"
       # Compose reaches Podman through its user socket, which the runner
@@ -43,7 +46,7 @@ jobs:
           opam-repositories: |
             open-opam: https://github.com/open-opam/opam-repository.git
             default: https://opam.ocaml.org
-      - run: opam install . --deps-only --with-test -y
+      - run: opam install . --deps-only --with-test -y --ignore-constraints-on=deps-of-spool
       - run: opam list --installed --columns=name,version
       - run: make build OPAM="opam exec --"
       # Compose reaches Podman through its user socket, which the runner
