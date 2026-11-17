@@ -1,0 +1,30 @@
+; The dashboard: routes an application adds to its own Spindle server.
+
+(library
+ (name spool_dashboard)
+ (public_name spool-dashboard)
+ (libraries
+  spool
+  spindle
+  spindle-postgres
+  rowtype
+  rowtype-postgres
+  wiretype
+  ptime
+  mtime
+  eio
+  logs)
+ (preprocess
+  (pps ppx_wiretype)))
+
+; The page as Vite built it, committed under assets/ and made a module here,
+; so the package installs with OCaml alone and serves it from memory. Crunch
+; writes it, at block size 0 so each file is one literal served without a
+; copy; `make dashboard` builds the bundle again.
+
+(rule
+ (target bundle.ml)
+ (deps
+  (source_tree assets))
+ (action
+  (run ocaml-crunch --mode=plain --block-size=0 --silent -o %{target} assets)))

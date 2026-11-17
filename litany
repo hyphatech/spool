@@ -1,0 +1,9 @@
+; The rules of Hypha's and spool's own a lint holds, beyond litany's default set.
+(lint
+ (select default)
+ (extend open-of-ordinary-module restricted-dependency))
+
+(rule restricted-dependency
+ (forbid Stdlib.invalid_arg
+  (use "a result: invalid_arg is a constant's, written in source: Kind.make's and Schedule.make's")
+  (except src/spool.ml dashboard/web/src/main.ml test/** examples/**)))

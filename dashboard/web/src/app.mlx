@@ -1,0 +1,249 @@
+module Button = Solidtype_heroui.Button
+module Drawer = Solidtype_heroui.Drawer
+module Gravity = Solidtype_gravity_icons
+module Jsx = Solidtype.Jsx
+module S = Solidtype.Solid
+module Show = Solidtype.Show
+module Segment = Solidtype_heroui.Segment
+module Theme = Solidtype_heroui.Theme
+module Toast = Solidtype_heroui.Toast
+
+(* How long a dropped stream waits before it connects again: the server
+   gone for a deploy is back in about that, and a page left open on a server
+   that is down asks no more than this often. *)
+let reconnect_ms = 2000
+
+(* Three missed charts: the server sends one a second. *)
+let silent_ms = 5000.
+
+let names_of (queues : Api.queue array) =
+  Array.map (fun (q : Api.queue) -> q.name) queues
+
+(* The page: the queue's state, live, in the left column; the chart and the
+   jobs beside it; a job opened in a drawer. *)
+let make () =
+  let theme = Theme.use () in
+  let counts, set_counts = S.create_signal [||] in
+  let queues, set_queues = S.create_signal [||] in
+  let runners, set_runners = S.create_signal [||] in
+  let schedules, set_schedules = S.create_signal [||] in
+  let chart, set_chart = S.create_signal None in
+  let allowed, set_allowed = S.create_signal [||] in
+  let may action = Page.may (S.get allowed) action in
+  (* Each counts event the server sends is a change in what waits or runs,
+     which is when the job list is fetched again. *)
+  let changes, set_changes = S.create_signal 0 in
+  let live, set_live = S.create_signal true in
+  let state, set_state = S.create_signal None in
+  let minute, set_minute = S.create_signal None in
+  let opened, set_opened = S.create_signal None in
+  (* The column of the queue's state: beside the work on a wide screen,
+     where it may be put away; in a drawer from the left on a narrow one,
+     opened from the header. *)
+  let column, set_column = S.create_signal true in
+  let menu, set_menu = S.create_signal false in
+  let now () =
+    match S.get chart with
+    | Some (c : Api.chart) -> Page.ms c.until
+    | None -> Js.Date.now ()
+  in
+  (* When the stream last said anything: the server sends the chart every
+     second, so a stream silent for longer than [silent_ms] is dead, however
+     open it looks, and is opened again. *)
+  let heard = ref 0. in
+  (* The build this page is, as the server named it on the first stream: a
+     later stream that names another is a server upgraded under the page,
+     whose events this page may no longer read. *)
+  let build = ref None in
+  let on_event (e : Api.get_api_live_event) =
+    heard := Js.Date.now ();
+    match e with
+    | Build b -> (
+        match !build with
+        | None -> build := Some b
+        | Some mine -> if not (String.equal mine b) then Page.reload ())
+    | Allowed a -> S.set set_allowed a
+    | Counts c ->
+        S.batch (fun () ->
+            S.set set_counts c;
+            S.update set_changes succ)
+    | Queues q -> S.set set_queues q
+    | Runners r -> S.set set_runners r
+    | Schedules s -> S.set set_schedules s
+    | Chart c -> S.set set_chart (Some c)
+  in
+  (* One stream at a time: a stream belongs to the generation it was opened
+     in, and one that ends while still current is opened again -- at once
+     when the server ended it, as it does each minute to ask again who
+     watches; after a pause when it was lost; and never when the viewer was
+     refused, whose page is loaded again to say so. *)
+  let generation = ref 0 in
+  let stream = ref None in
+  let rec connect () =
+    incr generation;
+    let mine = !generation in
+    let s = Api.get_api_live ~origin:(Page.origin ()) ~on_event () in
+    stream := Some s;
+    heard := Js.Date.now ();
+    ignore
+      (Js.Promise.then_
+         (fun (ended : (unit, Api.Route.error) result) ->
+           (if !generation = mine then
+              match ended with
+              | Ok () -> connect ()
+              | Error (`Refused _) -> Page.reload ()
+              | Error (`Invalid _ | `Lost _ | `Unexpected _) ->
+                  ignore
+                    (Js.Global.setTimeout
+                       ~f:(fun () -> if !generation = mine then connect ())
+                       reconnect_ms
+                      : Js.Global.timeoutId));
+           Js.Promise.resolve ())
+         (Api.Route.Stream.ended s)
+        : unit Js.Promise.t)
+  in
+  let disconnect () =
+    incr generation;
+    Option.iter Api.Route.Stream.close !stream;
+    stream := None
+  in
+  let watchdog = ref None in
+  S.on_mount (fun () ->
+      connect ();
+      watchdog :=
+        Some
+          (Js.Global.setInterval
+             ~f:(fun () ->
+               if S.get live && Js.Date.now () -. !heard > silent_ms then begin
+                 Option.iter Api.Route.Stream.close !stream;
+                 connect ()
+               end)
+             1000));
+  S.on_cleanup (fun () -> Option.iter Js.Global.clearInterval !watchdog);
+  S.on_cleanup disconnect;
+  let set_live_updates on =
+    S.set set_live on;
+    if on then connect () else disconnect ()
+  in
+  let pause (q : Api.queue) paused =
+    let call =
+      if paused then Api.post_api_queues_queue_pause
+      else Api.post_api_queues_queue_resume
+    in
+    Page.settle
+      (call ~origin:(Page.origin ()) ~queue:q.name ())
+      ~ok:(fun () ->
+        ignore
+          (Toast.success
+             (q.name ^ if paused then " is paused" else " is running again")
+            : Toast.key))
+  in
+  let sidebar () =
+    <Sidebar
+      counts=(S.get counts)
+      day=(match S.get chart with Some c -> c.day | None -> [||])
+      runners=(S.get runners)
+      queues=(S.get queues)
+      schedules=(S.get schedules)
+      now=(now ())
+      state=(S.get state)
+      on_state=(fun s ->
+                 S.set set_state s;
+                 S.set set_menu false)
+      on_pause=pause
+      may
+    />
+  in
+  <div class_="flex h-screen overflow-hidden">
+    <Show when_=(S.get column)>
+      <div class_="hidden md:flex">(sidebar ())</div>
+    </Show>
+    <Drawer.Backdrop is_open=(S.get menu) on_open_change=(S.set set_menu)>
+      <Drawer.Content placement=`left>
+        <Drawer.Dialog class_="w-72 max-w-[85vw] p-0">
+          <Drawer.Close_trigger /> (sidebar ())
+        </Drawer.Dialog>
+      </Drawer.Content>
+    </Drawer.Backdrop>
+    <main
+      class_="flex min-w-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-5 \
+              sm:px-6">
+      <header class_="flex flex-wrap items-center gap-3">
+        <Button
+          variant=`ghost
+          size=`sm
+          is_icon_only=true
+          class_="md:hidden"
+          aria_label="Show the queue's state"
+          on_click=(fun _ -> S.set set_menu true)>
+          <Gravity.Bars class_="size-4" />
+        </Button>
+        <Button
+          variant=`ghost
+          size=`sm
+          is_icon_only=true
+          class_="hidden md:inline-flex"
+          aria_label=(if S.get column then "Hide the queue's state"
+                      else "Show the queue's state")
+          on_click=(fun _ -> S.update set_column not)>
+          <Gravity.Layout_side_content_left class_="size-4" />
+        </Button>
+        <h1 class_="text-2xl font-semibold tracking-tight">"Queue"</h1>
+        <div class_="ms-auto flex items-center gap-2">
+          (* Pausing says so in words, at the width of its longer word, so
+             the theme picker beside it never moves. *)
+          <Button
+            variant=`ghost
+            size=`sm
+            class_="w-24 justify-start"
+            aria_label=(if S.get live then "Pause live updates"
+                        else "Resume live updates")
+            on_click=(fun _ -> set_live_updates (not (S.get live)))>
+            (if S.get live then <Gravity.Pause class_="size-4" />
+             else <Gravity.Play class_="size-4" />)
+            (Jsx.string (if S.get live then "Pause" else "Resume"))
+          </Button>
+          <Segment
+            size=`sm
+            aria_label="Theme"
+            selected_key=(S.get theme.theme)
+            on_selection_change=theme.set_theme>
+            <Segment.Item id="light" aria_label="Light">
+              <Gravity.Sun />
+            </Segment.Item>
+            <Segment.Item id="dark" aria_label="Dark">
+              <Gravity.Moon />
+            </Segment.Item>
+            <Segment.Item id="system" aria_label="System">
+              <Gravity.Display />
+            </Segment.Item>
+          </Segment>
+        </div>
+      </header>
+      <Throughput
+        chart=(S.get chart)
+        on_pick=(fun m ->
+                    S.batch (fun () ->
+                        S.set set_state None;
+                        S.set set_minute (Some m)))
+      />
+      <Jobs
+        state=(S.get state)
+        minute=(S.get minute)
+        on_clear_minute=(fun () -> S.set set_minute None)
+        queues=(names_of (S.get queues))
+        kinds=(match S.get chart with Some c -> c.kinds | None -> [||])
+        live=(S.get changes)
+        now=(now ())
+        on_open=(fun id -> S.set set_opened (Some id))
+        may
+      />
+    </main>
+    <Detail
+      id=(S.get opened)
+      on_close=(fun () -> S.set set_opened None)
+      on_open=(fun id -> S.set set_opened (Some id))
+      may
+    />
+    <Toast.Provider placement=`bottom_end />
+  </div>

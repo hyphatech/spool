@@ -3,4 +3,14 @@
 (library
  (name spool)
  (public_name spool)
- (libraries rowtype rowtype-postgres ptime wiretype eio logs mtime unix))
+ (libraries
+  rowtype
+  rowtype-postgres
+  ptime
+  wiretype
+  eio
+  logs
+  mtime
+  unix
+  ; a cron expression read in a named time zone, from the tz database
+  timedesc))

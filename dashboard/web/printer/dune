@@ -1,0 +1,7 @@
+; Prints the page's client from the dashboard's routes, mounted at the root:
+; the page passes its own path as the client's origin, so it calls them
+; wherever it is served.
+
+(executable
+ (name client)
+ (libraries spool-dashboard spindle eio eio_main))

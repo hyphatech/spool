@@ -1,0 +1,117 @@
+/* The dashboard's theme, Hypha's: the roles of Hypha's design system --
+   ivory the ground, ink the text, graphite what is muted, rule the lines,
+   accent the marks -- at its brand's hue 225, accent hue 231 and tint 1,
+   with its tip, caution and danger tones for what completed, was retried
+   and was discarded. A pair of blocks, as HeroUI's theming page writes one;
+   dashboard.css imports it into the theme layer after HeroUI's default, and
+   HeroUI's Theme.use writes data-theme beside its .dark class, which the
+   page sets too before it paints. Each block sets only what it changes; the
+   rest is HeroUI's default theme. */
+
+@layer base {
+  :root {
+    --hypha-radius-control: 4px;
+    --hypha-radius-panel: 10px;
+
+    --radius: 0.25rem;
+    --field-radius: var(--hypha-radius-control);
+    --border-width: 1px;
+  }
+
+  /* Hypha light */
+  [data-theme="light"] {
+    color-scheme: light;
+
+    --hypha-ivory: hsl(225 20% 97.5%);
+    --hypha-ink: hsl(225 15% 12%);
+    --hypha-graphite: hsl(225 8% 36%);
+    --hypha-rule: hsl(225 14% 87%);
+    --hypha-accent: oklch(from hsl(231 72% 50%) 0.5 0.13 h);
+    --hypha-tip: oklch(from hsl(150 72% 50%) 0.5 0.13 h);
+    --hypha-caution: oklch(from hsl(40 72% 50%) 0.5 0.13 h);
+    --hypha-danger: oklch(from hsl(5 72% 50%) 0.5 0.13 h);
+
+    --chart-completed: oklch(from hsl(150 72% 50%) 0.7 0.15 h);
+    --chart-retried: oklch(from hsl(40 72% 50%) 0.8 0.15 h);
+    --chart-discarded: oklch(from hsl(5 72% 50%) 0.64 0.17 h);
+  }
+
+  /* Hypha dark */
+  [data-theme="dark"] {
+    color-scheme: dark;
+
+    --hypha-ivory: hsl(225 15% 5%);
+    --hypha-ink: hsl(225 15% 90%);
+    --hypha-graphite: hsl(225 10% 58%);
+    --hypha-rule: hsl(225 14% 17%);
+    --hypha-accent: hsl(231 72% 72%);
+    --hypha-tip: hsl(150 72% 72%);
+    --hypha-caution: hsl(40 72% 72%);
+    --hypha-danger: hsl(5 72% 72%);
+
+    --chart-completed: var(--hypha-tip);
+    --chart-retried: var(--hypha-caution);
+    --chart-discarded: var(--hypha-danger);
+  }
+
+  /* The roles as HeroUI's tokens, alike in both schemes: a panel is the
+     ground with a little ink in it, outlined by a rule, never a filled
+     card on a shadow. oklab, because oklch loses the near-grey ground's
+     hue. */
+  [data-theme="light"],
+  [data-theme="dark"] {
+    --hypha-panel: color-mix(in oklab, var(--hypha-ink) 4%, var(--hypha-ivory));
+    --hypha-raised: color-mix(in oklab, var(--hypha-ink) 7%, var(--hypha-ivory));
+
+    --background: var(--hypha-ivory);
+    --foreground: var(--hypha-ink);
+    --eclipse: var(--hypha-ink);
+    --snow: var(--hypha-ivory);
+
+    --surface: var(--hypha-ivory);
+    --surface-secondary: var(--hypha-panel);
+    --surface-tertiary: var(--hypha-raised);
+    --overlay: var(--hypha-ivory);
+    --muted: var(--hypha-graphite);
+
+    --default: var(--hypha-raised);
+    --default-foreground: var(--hypha-ink);
+    --segment: var(--hypha-ivory);
+    --segment-foreground: var(--hypha-ink);
+
+    --field-background: var(--hypha-ivory);
+    --field-foreground: var(--hypha-ink);
+    --field-border: var(--hypha-rule);
+
+    --accent: var(--hypha-accent);
+    --accent-foreground: var(--hypha-ivory);
+    --success: var(--hypha-tip);
+    --success-foreground: var(--hypha-ivory);
+    --warning: var(--hypha-caution);
+    --warning-foreground: var(--hypha-ivory);
+    --danger: var(--hypha-danger);
+    --danger-foreground: var(--hypha-ivory);
+
+    /* A soft chip is its tone's line on the ground, its text the tone
+       itself, which reads at 4.5:1 on the ground in either scheme. */
+    --accent-soft: color-mix(in oklab, var(--hypha-accent) 12%, transparent);
+    --accent-soft-foreground: var(--hypha-accent);
+    --success-soft: color-mix(in oklab, var(--hypha-tip) 12%, transparent);
+    --success-soft-foreground: var(--hypha-tip);
+    --warning-soft: color-mix(in oklab, var(--hypha-caution) 12%, transparent);
+    --warning-soft-foreground: var(--hypha-caution);
+    --danger-soft: color-mix(in oklab, var(--hypha-danger) 12%, transparent);
+    --danger-soft-foreground: var(--hypha-danger);
+    --default-soft: var(--hypha-panel);
+    --default-soft-foreground: var(--hypha-graphite);
+
+    --border: var(--hypha-rule);
+    --separator: var(--hypha-rule);
+    --focus: var(--hypha-accent);
+    --link: var(--hypha-accent);
+
+    --surface-shadow: 0 0 0 0 transparent inset;
+    --overlay-shadow: 0 0 0 1px var(--hypha-rule);
+    --field-shadow: 0 0 0 0 transparent inset;
+  }
+}

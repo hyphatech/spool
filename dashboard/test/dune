@@ -1,0 +1,30 @@
+; The dashboard's routes against SPOOL_TEST_PG, called in-process; a
+; database of a case's own is the queue's suite's db_target.ml.
+
+(copy_files
+ (files ../../test/db_target.ml))
+
+(test
+ (name test_dashboard)
+ (modules test_dashboard db_target)
+ (package spool-dashboard)
+ (deps
+  (glob_files ../../migrations/*.sql))
+ (libraries
+  spool
+  spool-dashboard
+  spindle
+  spindle-http
+  spindle-postgres
+  rowtype
+  rowtype-postgres
+  wiretype
+  eio
+  eio.unix
+  eio_main
+  ptime
+  ptime.clock.os
+  mtime
+  logs
+  unix
+  alcotest))

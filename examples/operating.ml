@@ -16,6 +16,7 @@ let receipt = Spool.Kind.make ~queue:"mail" "receipt.send" order
 
 let state_name : Spool.state -> string = function
   | Available -> "available"
+  | Blocked -> "blocked"
   | Running -> "running"
   | Completed -> "completed"
   | Discarded -> "discarded"

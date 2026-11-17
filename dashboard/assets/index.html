@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>spool</title>
+    <!-- The stored choice, or the system's scheme, before the page paints: HeroUI's dark: variant reads .dark, and the theme's colours data-theme, as Theme.use writes both. -->
+    <script>
+      (function () {
+        var t = null;
+        try { t = localStorage.getItem("heroui-theme"); } catch (e) {}
+        var dark = t === "dark" || ((t === null || t === "system") && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.add(dark ? "dark" : "light");
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-eQwTZSsk.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-B7cbFGO4.css">
+  </head>
+  <body class="min-h-screen antialiased">
+    <div id="app"></div>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+; The page's OCaml, emitted as .jsx modules for Vite: `make dashboard`
+; builds them with dune, then bundles them into ../assets.
+
+(melange.emit
+ (target out)
+ (libraries dashboard_web)
+ (module_systems
+  (es6 jsx)))

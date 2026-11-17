@@ -5,9 +5,17 @@ title: The table
 import { Code } from "@astrojs/starlight/components";
 import verify from "@examples/verify.ml?raw";
 import createSpoolJobs from "@migrations/20261012000000_create_spool_jobs.sql?raw";
+import createSpoolShared from "@migrations/20261116000000_create_spool_queues_runners_stats.sql?raw";
+import limitSpoolQueues from "@migrations/20261116000001_limit_spool_queues.sql?raw";
+import createSpoolSchedules from "@migrations/20261116000002_create_spool_schedules.sql?raw";
+import holdSpoolKeys from "@migrations/20261116000003_hold_spool_keys.sql?raw";
+import createSpoolDependencies from "@migrations/20261116000004_create_spool_dependencies.sql?raw";
+import markSensitiveJobs from "@migrations/20261116000005_mark_sensitive_jobs.sql?raw";
+import indexSpoolFinishes from "@migrations/20261116000006_index_spool_finishes.sql?raw";
 
-spool keeps its jobs in one table, `spool_jobs` (`Spool.table`), made by
-its own migrations. They are plain SQL, installed with the package in
+spool keeps its jobs in one table, `spool_jobs` (`Spool.table`), and what
+its runners share beside them in more, all made by its own
+migrations. They are plain SQL, installed with the package in
 `share/spool/migrations`, and applied beside your own as a history of their
 own, before your application starts:
 
@@ -36,12 +44,13 @@ migration that broke one before a job does:
 
 ## States
 
-Five states, and the rest derived: *scheduled* is `available` with a later
+Six states, and the rest derived: *scheduled* is `available` with a later
 `scheduled_at`, *retrying* is `available` with an attempt made.
 
 | State | What it means |
 |---|---|
 | `available` | waiting, or scheduled, or to be retried |
+| `blocked` | waiting for jobs it was enqueued after |
 | `running` | claimed by a runner, under its lease |
 | `completed` | its handler answered `Ok` |
 | `discarded` | failed on its last attempt, expired, or given up |
@@ -55,12 +64,15 @@ Five states, and the rest derived: *scheduled* is `available` with a later
 | `kind` | What runs it: a kind's name, its identity, so a changed payload shape is a new kind. |
 | `payload` | What the job is given: an object, as its kind's description wrote it. |
 | `priority` | 0 to 9, 0 first: before the instant and the order of enqueueing. |
-| `state` | One of the five above. |
+| `state` | One of the six above. |
 | `attempt` | Attempts begun: raised by the claim, so a job that kills its process uses one. |
 | `max_attempts` | Its kind's attempts, when it was written. |
 | `scheduled_at` | When it may run next. |
 | `expires_at` | After when it is not worth running, and is discarded unrun. |
+| `partition_key` | The partition its kind gave it, which a queue limited per partition counts by. |
 | `unique_key` | Repeated asks of one kind with one key, folded into the job waiting. |
+| `sensitive` | Whether its kind keeps its payload from every answer of spool's. |
+| `unique_until` | Until when its key answers every enqueue with this job, whatever its state; its row is kept until then. |
 | `runner` | The runner holding its lease, while it runs. |
 | `lease_ends_at` | Until when its runner holds it, renewed while it runs; a lapsed one is rescued. |
 | `inserted_at`, `attempted_at`, `finished_at` | When it was written, last claimed, and finished. |
@@ -73,5 +85,36 @@ database's clock.
 <summary>The migration that makes it</summary>
 
 <Code code={createSpoolJobs} lang="sql" title="migrations/20261012000000_create_spool_jobs.sql" />
+
+</details>
+
+## Beside the jobs
+
+| Table | What it holds |
+|---|---|
+| `spool_queues` | A row a queue: whether it is paused, and its limits across every runner. Made when a runner first names the queue, or an operator pauses or limits it. |
+| `spool_runners` | A row a runner running: its host, process, queues and last heartbeat. |
+| `spool_stats` | A row a second, queue, kind and outcome: how many attempts finished, and how long they ran and waited. |
+| `spool_starts` | The attempts begun in a queue with a rate, kept as long as its period. |
+| `spool_partitions` | When each partition of a partitioned queue was last served. |
+| `spool_schedules` | A row a schedule: its expression, zone, job, and next and last tick. |
+| `spool_dependencies` | A row a job waiting for another: the waiting job, and the one it waits for. |
+
+<details>
+<summary>The migration that makes them</summary>
+
+<Code code={createSpoolShared} lang="sql" title="migrations/20261116000000_create_spool_queues_runners_stats.sql" />
+
+<Code code={limitSpoolQueues} lang="sql" title="migrations/20261116000001_limit_spool_queues.sql" />
+
+<Code code={createSpoolSchedules} lang="sql" title="migrations/20261116000002_create_spool_schedules.sql" />
+
+<Code code={holdSpoolKeys} lang="sql" title="migrations/20261116000003_hold_spool_keys.sql" />
+
+<Code code={createSpoolDependencies} lang="sql" title="migrations/20261116000004_create_spool_dependencies.sql" />
+
+<Code code={markSensitiveJobs} lang="sql" title="migrations/20261116000005_mark_sensitive_jobs.sql" />
+
+<Code code={indexSpoolFinishes} lang="sql" title="migrations/20261116000006_index_spool_finishes.sql" />
 
 </details>

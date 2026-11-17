@@ -1,0 +1,259 @@
+module Card = Solidtype_heroui.Card
+module Chart = Solidtype_rhp.Chart
+module Dot = Solidtype_rhp.Dot
+module Show = Solidtype.Show
+module For = Solidtype.For
+module Jsx = Solidtype.Jsx
+module Line = Solidtype_rhp.Line
+module Plot = Solidtype_rhp.Plot
+module Row = Solidtype_rhp.Row
+module S = Solidtype.Solid
+module Slat = Solidtype_rhp.Slat
+module Theme_values = Solidtype_rhp.Types.ThemeValues
+module Ticks = Solidtype_rhp.Ticks
+
+(* Jobs done and jobs failed, a point a minute over the last hour: whether
+   the queue gets through its work, and how much of it fails. *)
+
+let minutes = 60
+
+type minute = { done_ : float; failed : float }
+
+let empty = { done_ = 0.; failed = 0. }
+
+(* The hour as sixty minutes, oldest first, the last the minute before
+   [until]; a minute the server lists nothing for had nothing finish. *)
+let hour (chart : Api.chart option) =
+  let all = Array.make minutes empty in
+  (match chart with
+  | None -> ()
+  | Some c ->
+      let until = Page.ms c.until in
+      Array.iter
+        (fun (p : Api.point) ->
+          let back =
+            int_of_float (Float.round ((until -. Page.ms p.minute) /. 60_000.))
+          in
+          let i = minutes - back in
+          if i >= 0 && i < minutes then
+            all.(i) <-
+              { done_ = p.completed; failed = p.retried +. p.discarded })
+        c.points);
+  all
+
+(* The lines' colours are the theme's tones, lighter than the text's, since
+   a line is read by its colour and not its contrast. *)
+let theme =
+  Theme_values.make
+    ~series:[| "var(--chart-completed)"; "var(--chart-discarded)" |]
+    ()
+
+(* The side's step: a quarter of the highest minute, rounded up to 1, 2 or 5
+   times a power of ten, never below 1, so the four steps fall on round
+   numbers and the highest minute stays under the top. *)
+let step highest =
+  let quarter = Float.max 1. (highest /. 4.) in
+  let power = 10. ** Float.floor (Float.log10 quarter) in
+  List.find_opt (fun m -> m *. power >= quarter) [ 1.; 2.; 5.; 10. ]
+  |> Option.value ~default:10.
+  |> fun m -> m *. power
+
+(* The clock time of minute [i] of the hour, as the viewer's clock reads it,
+   so the axis says when and not how long ago. *)
+let clock (chart : Api.chart option) i =
+  match chart with
+  | None -> ""
+  | Some c ->
+      let at =
+        Js.Date.fromFloat
+          (Page.ms c.until -. (float_of_int (minutes - i) *. 60_000.))
+      in
+      let two n =
+        let s = string_of_int n in
+        if String.length s < 2 then "0" ^ s else s
+      in
+      two (int_of_float (Js.Date.getHours at))
+      ^ ":"
+      ^ two (int_of_float (Js.Date.getMinutes at))
+
+type series = { values : float array; colour : int }
+
+let line =
+  Slat.make (fun d ->
+      let s = Row.data d in
+      <div>
+        <Line
+          points=(Array.mapi
+                    (fun i v -> Some (Some (float_of_int i), Some v))
+                    s.values)
+          color=(Solidtype_rhp.Color.series s.colour)
+        />
+      </div>)
+
+type mark = { minute : int; value : float; colour : int }
+
+let mark =
+  Slat.make (fun d ->
+      let m = Row.data d in
+      <div>
+        <Dot
+          at=(float_of_int m.minute)
+          cross=m.value
+          size=(Solidtype_rhp.Types.Either.left "8px")
+          color=(Solidtype_rhp.Color.series m.colour)
+        />
+      </div>)
+
+(* Where minute [i] sits across the plot, as a share of its width. *)
+let share i = float_of_int i /. float_of_int (minutes - 1)
+let percent x = Js.Float.toString (x *. 100.) ^ "%"
+
+(* A column a minute over the plot, each centred on its minute, so pointing
+   anywhere picks the nearest; the minute pointed at shows its guide and
+   what it holds, beside it, on whichever side has room. *)
+let hover ~at ~set ~read ~pick =
+  <div
+    class_="relative z-10 h-full w-full"
+    on_mouse_leave=(fun _ -> S.set set None)>
+    <For each=(Array.init minutes Fun.id)>
+      (fun i _ ->
+        <div
+          class_="absolute top-0 bottom-0 cursor-pointer"
+          style=("left: "
+                ^ percent (share i -. (0.5 /. float_of_int (minutes - 1)))
+                ^ "; width: "
+                ^ percent (1. /. float_of_int (minutes - 1)))
+          on_mouse_enter=(fun _ -> S.set set (Some i))
+          on_click=(fun _ -> pick i)
+        />)
+    </For>
+    <Show.Some some=(S.get at)>
+      (fun i ->
+        let i () = S.get i in
+        let time () =
+          let t, _, _ = read (i ()) in
+          t
+        and done_ () =
+          let _, d, _ = read (i ()) in
+          d
+        and failed () =
+          let _, _, f = read (i ()) in
+          f
+        in
+        <div
+          class_="pointer-events-none absolute top-0 bottom-0"
+          style=("left: " ^ percent (share (i ())))>
+          <div class_="absolute top-0 bottom-0 w-px bg-[var(--hypha-rule)]" />
+          <div
+            class_=("absolute top-0 whitespace-nowrap rounded border \
+                     border-[var(--hypha-rule)] bg-background px-2 py-1 \
+                     text-xs text-foreground "
+                   ^ if share (i ()) > 0.7 then "right-2" else "left-2")>
+            <div class_="font-semibold">(Jsx.string (time ()))</div>
+            <div class_="flex items-center gap-1.5">
+              <span class_="size-2 rounded-full bg-[var(--chart-completed)]" />
+              (Jsx.string ("Done " ^ Page.count (done_ ())))
+            </div>
+            <div class_="flex items-center gap-1.5">
+              <span class_="size-2 rounded-full bg-[var(--chart-discarded)]" />
+              (Jsx.string ("Failed " ^ Page.count (failed ())))
+            </div>
+          </div>
+        </div>)
+    </Show.Some>
+  </div>
+
+(* The label stands on the number's baseline, and its dot is set in its
+   line, on the middle of its lowercase: in a flex box a dot, having no
+   text, would give the label its own bottom edge as a baseline. *)
+let legend ~label ~colour n =
+  <span class_="flex items-baseline gap-2">
+    <span class_="text-xs text-muted">
+      <span
+        class_=("me-1.5 inline-block size-2 rounded-full align-middle " ^ colour)
+      />
+      (Jsx.string label)
+    </span>
+    <span class_="text-base font-semibold tabular-nums text-foreground">
+      (Jsx.string (Page.count n))
+    </span>
+  </span>
+
+(* The start of minute [i] of the hour, as the job list asks for it. *)
+let minute_start (chart : Api.chart option) i =
+  match chart with
+  | None -> None
+  | Some c ->
+      Api.Instant.of_date
+        (Js.Date.fromFloat
+           (Page.ms c.until -. (float_of_int (minutes - i) *. 60_000.)))
+
+let%component make ~(chart : Api.chart option)
+    ~(on_pick : Api.Instant.t -> unit) () =
+  let all () = hour (S.get chart) in
+  let at, set_at = S.create_signal None in
+  let read i =
+    let m = (all ()).(i) in
+    (clock (S.get chart) i, m.done_, m.failed)
+  in
+  let marks () =
+    match S.get at with
+    | None -> [||]
+    | Some i ->
+        let m = (all ()).(i) in
+        [|
+          { minute = i; value = m.done_; colour = 1 };
+          { minute = i; value = m.failed; colour = 2 };
+        |]
+  in
+  let sum f = Array.fold_left (fun n m -> n +. f m) 0. (all ()) in
+  let step () =
+    step
+      (Array.fold_left
+         (fun n m -> Float.max n (Float.max m.done_ m.failed))
+         0. (all ()))
+  in
+  let series () =
+    let a = all () in
+    [|
+      { values = Array.map (fun m -> m.done_) a; colour = 1 };
+      { values = Array.map (fun m -> m.failed) a; colour = 2 };
+    |]
+  in
+  <Card class_="flex flex-col gap-3 p-4">
+    <div class_="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+      <h2 class_="text-sm font-semibold">"Jobs per minute"</h2>
+      <span class_="text-xs text-muted">"the last hour"</span>
+      <div class_="ms-auto flex items-baseline gap-5">
+        (legend ~label:"Done" ~colour:"bg-[var(--chart-completed)]"
+           (sum (fun m -> m.done_)))
+        (legend ~label:"Failed" ~colour:"bg-[var(--chart-discarded)]"
+           (sum (fun m -> m.failed)))
+      </div>
+    </div>
+    <Chart
+      class_="pt-2"
+      height=160.
+      scale=(0., float_of_int (minutes - 1))
+      ticks=(Ticks.values [| 0.; 20.; 40.; float_of_int (minutes - 1) |])
+      grid=false
+      format=(fun i ->
+               <span>(Jsx.string (clock (S.get chart) (int_of_float i)))</span>)
+      cross=(0., 4. *. step ())
+      cross_ticks=(Ticks.values
+                     (Array.init 5 (fun i -> float_of_int i *. step ())))
+      cross_format=(fun n -> <span>(Jsx.string (Page.count n))</span>)
+      theme
+      label="Jobs done and failed each minute over the last hour">
+      <Plot rows=(series ()) overlap=true render=line />
+      <Plot rows=(marks ()) overlap=true render=mark />
+      (hover ~at ~set:set_at ~read ~pick:(fun i ->
+           match minute_start (S.get chart) i with
+           | Some m -> on_pick m
+           | None -> ()))
+    </Chart>
+    <p class_="text-xs text-muted">
+      "Failed counts every attempt that did not succeed: retried or discarded. \
+       Click a minute to list its jobs."
+    </p>
+  </Card>

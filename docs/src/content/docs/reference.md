@@ -7,26 +7,42 @@ function says what it does, what it refuses and what it defaults to.
 
 ## The packages
 
-A `dune` file names a library as it is installed (`rowtype-postgres`);
-OCaml code names it as a module (`Rowtype_postgres`).
+A `dune` file names a library as it is installed (`spool-dashboard`);
+OCaml code names it as a module (`Spool_dashboard`).
 
 | Package | Libraries | What it is |
 |---|---|---|
-| `spool` | `spool` | The queue: its table's statements, kinds, enqueueing, the runner, and an operator's hand; its migrations installed in `share/spool/migrations` |
+| `spool` | `spool` | The queue: its table's statements, kinds, enqueueing, the runner, schedules, a queue's pause and limits, and an operator's hand; its migrations installed in `share/spool/migrations` |
+| `spool-dashboard` | `spool-dashboard` | The dashboard: routes of an application's own Spindle server, its page built in |
 | [`rowtype`, `rowtype-postgres`, `rowtype-migrate`](https://hyphatech.github.io/rowtype/) | the same | A statement described once, its Postgres backend, which spool runs over, and the command that applies spool's migrations, released on their own; `spool` installs `rowtype` and `rowtype-postgres` |
 | [`wiretype`](https://hyphatech.github.io/wiretype/) | `wiretype` | JSON as descriptions, which a job's payload is, released on its own; installed with `spool` |
+| [`spindle`, `spindle-postgres`](https://hyphatech.github.io/spindle/) | the same | The web framework the dashboard's routes are of, and its pool; installed with `spool-dashboard` |
 
 ## spool
 
 - [`Spool`](/spool/reference/spool/Spool/index.html) -- the table, kinds,
   enqueueing, an operator's hand, and running: `table`, `statements`,
-  `enqueue`, `find`, `counts`, `cancel`, `retry` and `handle`. Its modules:
+  `enqueue`, `enqueue_many`, `enqueue_after`, `find`, `workflow`, `counts`,
+  `jobs`, `cancel`, `retry`, `run_again`, `delete` and `handle`. Its
+  modules:
   - [`Spool.Kind`](/spool/reference/spool/Spool/Kind/index.html) -- a kind
     of job: its name, its payload's description, and how it is run.
   - [`Spool.Runner`](/spool/reference/spool/Spool/Runner/index.html) -- a
-    runner of queues: made, started, drained in a test, and stopped.
+    runner of queues: made, started, drained in a test, stopped, and the
+    list of those running.
+  - [`Spool.Queue`](/spool/reference/spool/Spool/Queue/index.html) -- a
+    queue's settings every runner obeys: its pause and its limits.
+  - [`Spool.Schedule`](/spool/reference/spool/Spool/Schedule/index.html) --
+    a recurring job: its expression and zone, its ticks, and running it now.
+  - [`Spool.Stats`](/spool/reference/spool/Spool/Stats/index.html) -- what
+    attempts came to, a row a second, queue, kind and outcome.
   - [`Spool.Id`](/spool/reference/spool/Spool/Id/index.html) -- a job's
     handle.
+
+## spool-dashboard
+
+- [`Spool_dashboard`](/spool/reference/spool-dashboard/Spool_dashboard/index.html)
+  -- the dashboard's routes, and the actions an operator may be allowed.
 
 ## What it is built on
 
@@ -37,3 +53,5 @@ OCaml code names it as a module (`Rowtype_postgres`).
   given.
 - [`Wiretype`](https://hyphatech.github.io/wiretype/) -- JSON as
   descriptions: a kind's payload.
+- [`Spindle`](https://hyphatech.github.io/spindle/) -- the routes the
+  dashboard is, and the access an application decides them by.
