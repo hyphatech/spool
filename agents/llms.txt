@@ -1,0 +1,28 @@
+# spool
+
+> Durable jobs for modern OCaml, backed by Postgres.
+
+## Start here
+
+- [Getting Started](pages/index.md): Durable jobs for modern OCaml, backed by Postgres.
+- [Quick start](pages/quick-start.md)
+
+## Guides
+
+- [The table](pages/guide/table.md)
+- [Kinds](pages/guide/kinds.md)
+- [Enqueueing](pages/guide/enqueueing.md)
+- [Handlers](pages/guide/handlers.md)
+- [The runner](pages/guide/runner.md)
+- [In a Spindle application](pages/guide/spindle.md)
+- [Operating a queue](pages/guide/operating.md)
+- [The dashboard](pages/guide/dashboard.md)
+- [Limiting a queue](pages/guide/limiting.md)
+- [Recurring jobs](pages/guide/schedules.md)
+- [Workflows](pages/guide/workflows.md)
+- [Testing](pages/guide/testing.md)
+- [What it does not do yet](pages/guide/limits.md)
+
+## Reference
+
+- [Reference](pages/reference.md)
