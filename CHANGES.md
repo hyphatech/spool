@@ -1,5 +1,11 @@
 # Changes
 
+## Unreleased
+
+- The spool package installs its documentation for agents: each page as
+  Markdown and `llms.txt`, at `$(opam var spool:doc)`. The README's *With an
+  agent* gives the line for a project's `AGENTS.md` that sends an agent there.
+
 ## 0.7.0 (2026-11-17)
 
 - A new package, `spool-dashboard`: a live dashboard for the queue, as

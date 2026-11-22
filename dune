@@ -16,3 +16,13 @@
  (files
   (glob_files
    (migrations/*.sql with_prefix migrations))))
+
+; The documentation for a user's agent, agents/, written from the site's pages
+; by `make docs`: spool installs it whole, so $(opam var spool:doc) holds
+; llms.txt and each page.
+
+(install
+ (section doc)
+ (package spool)
+ (source_trees
+  (agents as .)))

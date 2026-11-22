@@ -82,6 +82,18 @@ The runner claims the job once the transaction commits, under a lease, and
 runs its handler outside every transaction; `Spool.Runner.start` starts it
 and `Spool.Runner.stop` stops it.
 
+## With an agent
+
+Each release installs its documentation for an agent with it, at
+`$(opam var spool:doc)`: `llms.txt`, and every page in Markdown. An agent
+reads it when your project's `AGENTS.md` tells it to:
+
+```md
+Before writing code with spool, read `$(opam var spool:doc)/llms.txt` and
+the pages it lists for the parts you need, and use those parts rather than
+writing your own.
+```
+
 ## Contributing
 
 See [AGENTS.md](AGENTS.md).
